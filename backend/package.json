@@ -11,7 +11,11 @@
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
-    "migrate": "ts-node src/scripts/migrate.ts",
+    "migrate": "ts-node migrate.ts",
+    "migrate:up": "ts-node migrate.ts up",
+    "migrate:down": "ts-node migrate.ts down",
+    "migrate:status": "ts-node migrate.ts status",
+    "migrate:create": "ts-node migrate.ts create",
     "seed": "ts-node src/scripts/seed.ts"
   },
   "dependencies": {
