@@ -57,6 +57,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         // Set user data
         setUser(response.user);
+        // Optional: prefetch profile to ensure freshness
+        try {
+          const profile = await getUserProfileAPI();
+          if (profile?.success && profile?.user) {
+            setUser(profile.user);
+          }
+        } catch {}
       } else {
         throw new Error(response.message || 'Login failed');
       }

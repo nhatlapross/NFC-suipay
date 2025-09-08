@@ -7,6 +7,7 @@ import { getUserCardsAPI, getPaymentHistoryAPI } from '@/lib/api-client';
 import TransactionHistory from '@/components/TransactionHistory';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Wallet, TrendingUp, CreditCard, Activity } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -20,6 +21,14 @@ export default function DashboardPage() {
     monthlySpent: 0
   });
   const [error, setError] = useState('');
+  const router = useRouter();
+
+  // Redirect unauthenticated users to /auth
+  useEffect(() => {
+    if (!user) {
+      router.replace('/auth');
+    }
+  }, [user, router]);
 
   useEffect(() => {
     if (user) {
@@ -33,7 +42,7 @@ export default function DashboardPage() {
     try {
       // Load user cards
       try {
-        const cardsResponse = await getUserCardsAPI();
+        const cardsResponse: any = await getUserCardsAPI();
         if (cardsResponse.success) {
           setCards(cardsResponse.cards || []);
         }
@@ -43,7 +52,7 @@ export default function DashboardPage() {
 
       // Load transactions
       try {
-        const transactionsResponse = await getPaymentHistoryAPI({ limit: 10 });
+        const transactionsResponse: any = await getPaymentHistoryAPI({ limit: 10 });
         if (transactionsResponse.success) {
           setTransactions(transactionsResponse.transactions || []);
           
