@@ -152,8 +152,8 @@ export async function createWalletAPI() {
   return api.post('/wallet/create');
 }
 
-export async function getWalletBalanceAPI() {
-  return api.get('/wallet/balance');
+export async function getWalletBalanceAPI(address: string) {
+  return api.get(`/wallet/balance/${address}`);
 }
 
 export async function getWalletTransactionsAPI(params?: {

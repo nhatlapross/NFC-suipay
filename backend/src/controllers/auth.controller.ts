@@ -6,13 +6,18 @@ const authService = new AuthService();
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const { email, password, phoneNumber, fullName } = req.body;
+      const { email, password, phoneNumber, fullName, role } = req.body;
       
+      // Only allow creating admin when explicitly enabled via env flag
+      const canCreateAdmin = process.env.ALLOW_ADMIN_SIGNUP === 'true';
+      const normalizedRole = role && ['user','merchant','admin'].includes(role) ? role : 'user';
+
       const result = await authService.register({
         email,
         password,
         phoneNumber,
         fullName,
+        role: normalizedRole === 'admin' && canCreateAdmin ? 'admin' : normalizedRole,
       });
       
       res.status(201).json({
@@ -23,6 +28,7 @@ export class AuthController {
           email: result.email,
           fullName: result.fullName,
           status: result.status,
+          role: result.role,
         },
       });
     } catch (error) {

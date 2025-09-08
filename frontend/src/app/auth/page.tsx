@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { verifyOtpAPI, resendOtpAPI } from '@/lib/api-client';
+import { verifyOtpAPI, resendOtpAPI, getUserProfileAPI } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 
 type AuthMode = 'login' | 'register' | 'verify';
@@ -23,13 +23,8 @@ export default function AuthPage() {
   const { login, register } = useAuth();
   const router = useRouter();
 
-  // If already logged in, redirect away from auth page
+  // Note: Do not auto-redirect away; allow visiting /auth even if logged in
   const { user } = useAuth();
-  useEffect(() => {
-    if (user) {
-      router.replace('/');
-    }
-  }, [user, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,8 +34,18 @@ export default function AuthPage() {
     try {
       await login(email, password);
       setMessage('Đăng nhập thành công!');
-      // Navigate to home after successful login
-      router.replace('/');
+      // Fetch profile to determine role-based redirect
+      try {
+        const profile: any = await getUserProfileAPI();
+        const role = profile?.user?.role;
+        if (role === 'admin') {
+          router.replace('/admin');
+        } else {
+          router.replace('/');
+        }
+      } catch {
+        router.replace('/');
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Đăng nhập thất bại');
     } finally {

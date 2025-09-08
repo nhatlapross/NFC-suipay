@@ -15,6 +15,7 @@ export class AuthService {
     password: string;
     phoneNumber: string;
     fullName: string;
+    role?: 'user' | 'merchant' | 'admin';
   }): Promise<IUser> {
     // Check if user exists
     const existingUser = await User.findOne({
@@ -25,7 +26,7 @@ export class AuthService {
       throw new Error('User already exists with this email or phone number');
     }
     
-    // Create user
+    // Create user (role will be validated/set by controller policy)
     const user = await User.create(userData);
     
     // Send verification email

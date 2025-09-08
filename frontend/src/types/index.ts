@@ -4,6 +4,7 @@ export interface User {
     fullName: string;
     phoneNumber: string;
     walletAddress: string;
+    role?: 'user' | 'merchant' | 'admin';
     dailyLimit: number;
     monthlyLimit: number;
     status: "active" | "blocked" | "suspended";
