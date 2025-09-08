@@ -1,19 +1,62 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { User, Mail, Phone, Shield, Key, Users } from "lucide-react";
-import { mockUserProfile } from "@/data/mockData";
+import { getUserProfileAPI } from "@/lib/api-client";
+
+type ProfileView = {
+    name: string;
+    email: string;
+    phone: string;
+    recoveryEmail: string;
+    multiSigEnabled: boolean;
+    walletAddress?: string;
+};
 
 const ProfileScreen: React.FC = () => {
-    const [profile, setProfile] = useState(mockUserProfile);
+    const [profile, setProfile] = useState<ProfileView | null>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        const loadProfile = async () => {
+            setLoading(true);
+            setError("");
+            try {
+                const response: any = await getUserProfileAPI();
+                if (response?.success && response?.user) {
+                    const u = response.user;
+                    setProfile({
+                        name: u.fullName || "",
+                        email: u.email || "",
+                        phone: u.phoneNumber || "",
+                        recoveryEmail: u.recoveryEmail || "",
+                        multiSigEnabled: Boolean(u.multiSigEnabled),
+                        walletAddress: u.walletAddress,
+                    });
+                } else {
+                    setError("Không tải được thông tin hồ sơ");
+                }
+            } catch (err: any) {
+                setError(err?.response?.data?.error || "Không tải được thông tin hồ sơ");
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadProfile();
+    }, []);
 
     const handleInputChange = (
-        field: keyof typeof profile,
+        field: keyof ProfileView,
         value: string | boolean
     ) => {
-        setProfile((prev) => ({
-            ...prev,
-            [field]: value,
-        }));
+        setProfile((prev) =>
+            prev
+                ? {
+                      ...prev,
+                      [field]: value,
+                  }
+                : prev
+        );
     };
 
     return (
@@ -26,6 +69,18 @@ const ProfileScreen: React.FC = () => {
                 <div className="w-16 h-1 bg-neo-pink mx-auto"></div>
             </div>
 
+            {/* Loading / Error */}
+            {loading && (
+                <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                    <p className="font-mono">Đang tải hồ sơ...</p>
+                </div>
+            )}
+            {error && (
+                <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                    <p className="font-mono text-red-600">{error}</p>
+                </div>
+            )}
+
             {/* Profile Picture & Basic Info */}
             <div className="bg-neo-cyan border-4 border-neo-black shadow-brutal p-6">
                 <div className="flex items-center gap-6">
@@ -34,14 +89,10 @@ const ProfileScreen: React.FC = () => {
                     </div>
                     <div className="flex-1">
                         <h2 className="font-mono font-bold text-2xl text-neo-black mb-1">
-                            {profile.name}
+                            {profile?.name || ""}
                         </h2>
                         <p className="font-mono text-sm text-neo-black opacity-70">
-                            WALLET ID: WLT-
-                            {Math.random()
-                                .toString(36)
-                                .substr(2, 8)
-                                .toUpperCase()}
+                            WALLET: {profile?.walletAddress || "N/A"}
                         </p>
                     </div>
                     <button
@@ -71,11 +122,11 @@ const ProfileScreen: React.FC = () => {
                         </label>
                         <input
                             type="text"
-                            value={profile.name}
+                            value={profile?.name || ""}
                             onChange={(e) =>
                                 handleInputChange("name", e.target.value)
                             }
-                            disabled={!isEditing}
+                            disabled={!isEditing || loading}
                             className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white disabled:opacity-50 focus:outline-none focus:shadow-brutal"
                         />
                     </div>
@@ -88,11 +139,11 @@ const ProfileScreen: React.FC = () => {
                             <Mail size={20} className="text-neo-black" />
                             <input
                                 type="email"
-                                value={profile.email}
+                                value={profile?.email || ""}
                                 onChange={(e) =>
                                     handleInputChange("email", e.target.value)
                                 }
-                                disabled={!isEditing}
+                                disabled={!isEditing || loading}
                                 className="flex-1 p-3 border-4 border-neo-black font-mono bg-neo-white disabled:opacity-50 focus:outline-none focus:shadow-brutal"
                             />
                         </div>
@@ -106,11 +157,11 @@ const ProfileScreen: React.FC = () => {
                             <Phone size={20} className="text-neo-black" />
                             <input
                                 type="tel"
-                                value={profile.phone}
+                                value={profile?.phone || ""}
                                 onChange={(e) =>
                                     handleInputChange("phone", e.target.value)
                                 }
-                                disabled={!isEditing}
+                                disabled={!isEditing || loading}
                                 className="flex-1 p-3 border-4 border-neo-black font-mono bg-neo-white disabled:opacity-50 focus:outline-none focus:shadow-brutal"
                             />
                         </div>
@@ -136,14 +187,14 @@ const ProfileScreen: React.FC = () => {
                         </label>
                         <input
                             type="email"
-                            value={profile.recoveryEmail}
+                            value={profile?.recoveryEmail || ""}
                             onChange={(e) =>
                                 handleInputChange(
                                     "recoveryEmail",
                                     e.target.value
                                 )
                             }
-                            disabled={!isEditing}
+                            disabled={!isEditing || loading}
                             className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white disabled:opacity-50 focus:outline-none focus:shadow-brutal"
                         />
                     </div>
@@ -192,27 +243,27 @@ const ProfileScreen: React.FC = () => {
                             onClick={() =>
                                 handleInputChange(
                                     "multiSigEnabled",
-                                    !profile.multiSigEnabled
+                                    !Boolean(profile?.multiSigEnabled)
                                 )
                             }
                             className={`px-4 py-2 font-mono text-xs font-bold border-2 border-neo-black transition-colors ${
-                                profile.multiSigEnabled
+                                profile?.multiSigEnabled
                                     ? "bg-neo-cyan text-neo-black"
                                     : "bg-neo-white text-neo-black hover:bg-neo-pink hover:text-neo-white"
                             }`}
                         >
-                            {profile.multiSigEnabled ? "ON" : "OFF"}
+                            {profile?.multiSigEnabled ? "ON" : "OFF"}
                         </button>
                     </div>
 
-                    {profile.multiSigEnabled && (
+                    {profile?.multiSigEnabled && (
                         <div className="bg-neo-black text-neo-white p-4">
                             <p className="font-mono text-xs mb-2">
                                 AUTHORIZED SIGNERS:
                             </p>
                             <div className="space-y-1">
                                 <p className="font-mono text-xs">
-                                    • {profile.email} (YOU)
+                                    • {profile?.email} (YOU)
                                 </p>
                                 <p className="font-mono text-xs">
                                     • backup@example.com
