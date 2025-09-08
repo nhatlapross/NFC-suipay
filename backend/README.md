@@ -410,7 +410,7 @@ MIT License - xem file [LICENSE](./LICENSE) để biết chi tiết.
 ## 👤 Test Accounts (Local)
 
 - Admin
-  - Email: `admin@nfcpayment.com`
+  - Email: `admin2@nfcpayment.com`
   - Password: `P@ssw0rd123`
   - Ghi chú: Nếu mật khẩu chưa khớp với dữ liệu hiện tại, đặt lại mật khẩu trong MongoDB bằng cách cập nhật hash hoặc bật biến môi trường `ALLOW_ADMIN_SIGNUP=true` rồi đăng ký tài khoản admin mới qua endpoint `/api/auth/register` với `role: "admin"`.
 

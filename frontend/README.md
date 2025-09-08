@@ -9,7 +9,7 @@ npm run dev
 ## Test Accounts (Local)
 
 - Admin
-  - Email: `admin@nfcpayment.com`
+  - Email: `admin2@nfcpayment.com`
   - Password: `P@ssw0rd123`
   - Redirects to `/admin` after login
 
