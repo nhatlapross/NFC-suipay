@@ -3,7 +3,7 @@ import { Geist_Mono, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { WalletProvider } from "@/contexts/WalletContext";
-import Navigation from "@/components/Navigation";
+// import Navigation from "@/components/Navigation";
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from "@/components/QueryClientProvider";
 
@@ -37,7 +37,7 @@ export default function RootLayout({
                     <AuthProvider>
                         <WalletProvider>
                             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-                                <Navigation />
+                                {/* <Navigation /> */}
                                 <main className="mx-auto">{children}</main>
                             </div>
                             <Toaster />

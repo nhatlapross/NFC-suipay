@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { verifyOtpAPI, resendOtpAPI } from '@/lib/api-client';
+import { useRouter } from 'next/navigation';
 
 type AuthMode = 'login' | 'register' | 'verify';
 
@@ -20,6 +21,15 @@ export default function AuthPage() {
   const [otp, setOtp] = useState('');
   
   const { login, register } = useAuth();
+  const router = useRouter();
+
+  // If already logged in, redirect away from auth page
+  const { user } = useAuth();
+  useEffect(() => {
+    if (user) {
+      router.replace('/');
+    }
+  }, [user, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +39,8 @@ export default function AuthPage() {
     try {
       await login(email, password);
       setMessage('Đăng nhập thành công!');
+      // Navigate to home after successful login
+      router.replace('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Đăng nhập thất bại');
     } finally {
@@ -58,7 +70,7 @@ export default function AuthPage() {
     setError('');
     
     try {
-      const response = await verifyOtpAPI(phoneNumber, otp);
+      const response: any = await verifyOtpAPI(phoneNumber, otp);
       if (response.success) {
         setMessage('Xác thực thành công! Bạn có thể đăng nhập.');
         setMode('login');
