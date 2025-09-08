@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { verifyOtpAPI, resendOtpAPI, getUserProfileAPI } from '@/lib/api-client';
+import { verifyOtpAPI, resendOtpAPI, getUserProfileAPI, forgotPasswordAPI } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 
 type AuthMode = 'login' | 'register' | 'verify';
@@ -104,191 +104,218 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold">NFC Payment</h2>
-          <p className="mt-2 text-gray-600">
-            {mode === 'login' && 'Đăng nhập vào tài khoản'}
-            {mode === 'register' && 'Tạo tài khoản mới'}
-            {mode === 'verify' && 'Xác thực số điện thoại'}
-          </p>
+    <div className="min-h-screen bg-neo-cyan flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Title */}
+        <div className="text-center mb-6">
+          <h1 className="font-mono font-bold text-3xl text-neo-black tracking-wider">HYBRID WALLET</h1>
+          <p className="font-mono text-xs text-neo-black opacity-80 mt-1">SECURE • FAST • BRUTAL</p>
         </div>
 
-        {/* Messages */}
-        {message && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-            {message}
-          </div>
-        )}
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
-        )}
+        {/* Panel */}
+        <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+          <h2 className="font-mono font-bold text-xl text-neo-black text-center mb-6">
+            {mode === 'login' && 'LOGIN'}
+            {mode === 'register' && 'CREATE ACCOUNT'}
+            {mode === 'verify' && 'VERIFY OTP'}
+          </h2>
 
-        {/* Login Form */}
-        {mode === 'login' && (
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
+          {/* Messages */}
+          {message && (
+            <div className="mb-4 p-3 border-2 border-neo-black bg-green-100 font-mono text-sm">
+              {message}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Mật khẩu</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
+          )}
+          {error && (
+            <div className="mb-4 p-3 border-2 border-neo-black bg-red-100 font-mono text-sm">
+              {error}
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-            </button>
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => setMode('register')}
-                className="text-blue-600 hover:text-blue-500"
-              >
-                Chưa có tài khoản? Đăng ký
-              </button>
-            </div>
-          </form>
-        )}
+          )}
 
-        {/* Register Form */}
-        {mode === 'register' && (
-          <form onSubmit={handleRegister} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Họ tên</label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Số điện thoại</label>
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="+84901234567"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Mật khẩu</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-                minLength={8}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              {loading ? 'Đang đăng ký...' : 'Đăng ký'}
-            </button>
-            <div className="text-center">
+          {/* Login Form */}
+          {mode === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">EMAIL</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  placeholder="your@email.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">PASSWORD</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                />
+              </div>
               <button
-                type="button"
-                onClick={() => setMode('login')}
-                className="text-blue-600 hover:text-blue-500"
-              >
-                Đã có tài khoản? Đăng nhập
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* OTP Verification Form */}
-        {mode === 'verify' && (
-          <form onSubmit={handleVerifyOtp} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Mã xác thực (OTP)
-              </label>
-              <p className="text-sm text-gray-600 mb-2">
-                Nhập mã 6 số đã được gửi đến {phoneNumber}
-              </p>
-              <input
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest"
-                placeholder="123456"
-                maxLength={6}
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              {loading ? 'Đang xác thực...' : 'Xác thực'}
-            </button>
-            <div className="text-center space-y-2">
-              <button
-                type="button"
-                onClick={handleResendOtp}
+                type="submit"
                 disabled={loading}
-                className="text-blue-600 hover:text-blue-500 disabled:opacity-50"
+                className="w-full py-3 bg-neo-pink text-neo-white font-mono font-bold border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow disabled:opacity-50"
               >
-                Gửi lại mã OTP
+                {loading ? 'LOGGING IN...' : 'LOGIN'}
               </button>
-              <br />
-              <button
-                type="button"
-                onClick={() => setMode('register')}
-                className="text-gray-600 hover:text-gray-500"
-              >
-                Trở về đăng ký
-              </button>
-            </div>
-          </form>
-        )}
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!email) {
+                      setError('Please enter your email first');
+                      return;
+                    }
+                    setLoading(true);
+                    setError('');
+                    setMessage('');
+                    try {
+                      await forgotPasswordAPI(email);
+                      setMessage('Password reset link sent (if account exists)');
+                    } catch (err: any) {
+                      setError(err?.response?.data?.error || 'Failed to send reset link');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="font-mono text-xs underline"
+                >
+                  FORGOT PASSWORD?
+                </button>
+              </div>
+              {/* moved create account CTA below panel */}
+            </form>
+          )}
 
-        {/* Test Backend Connection */}
-        <div className="mt-8 p-4 bg-gray-100 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Test Backend</h3>
-          <div className="text-xs text-gray-600">
-            <p>Backend URL: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'}</p>
-            <p>Status: {loading ? 'Connecting...' : 'Ready'}</p>
-          </div>
+          {/* Register Form */}
+          {mode === 'register' && (
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">FULL NAME</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">EMAIL</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">PHONE NUMBER</label>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+84901234567"
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">PASSWORD</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                  minLength={8}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-neo-pink text-neo-white font-mono font-bold border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow disabled:opacity-50"
+              >
+                {loading ? 'CREATING...' : 'CREATE ACCOUNT'}
+              </button>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setMode('login')}
+                  className="font-mono text-xs underline"
+                >
+                  ALREADY HAVE AN ACCOUNT? LOGIN
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* OTP Verification Form */}
+          {mode === 'verify' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">VERIFICATION CODE (OTP)</label>
+                <p className="font-mono text-xs text-neo-black opacity-70 mb-2">Enter the 6-digit code sent to {phoneNumber}</p>
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white text-center text-2xl tracking-widest focus:outline-none focus:shadow-brutal"
+                  placeholder="123456"
+                  maxLength={6}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-neo-pink text-neo-white font-mono font-bold border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow disabled:opacity-50"
+              >
+                {loading ? 'VERIFYING...' : 'VERIFY'}
+              </button>
+              <div className="text-center space-y-2">
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={loading}
+                  className="font-mono text-xs underline disabled:opacity-50"
+                >
+                  RESEND OTP
+                </button>
+                <br />
+                <button
+                  type="button"
+                  onClick={() => setMode('register')}
+                  className="font-mono text-xs underline"
+                >
+                  BACK TO REGISTER
+                </button>
+              </div>
+            </form>
+          )}
         </div>
+
+        {/* Bottom CTA */}
+        {mode === 'login' && (
+          <div className="mt-6">
+            <p className="font-mono text-center text-xs text-neo-black opacity-80 mb-3">
+              NEW TO HYBRID WALLET?
+            </p>
+            <button
+              type="button"
+              onClick={() => setMode('register')}
+              className="w-full py-3 bg-neo-blue text-neo-black font-mono font-bold border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow"
+            >
+              CREATE ACCOUNT
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
