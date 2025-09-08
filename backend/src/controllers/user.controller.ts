@@ -1,10 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 export class UserController {
   // Profile management
-  async getProfile(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getProfile(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      return res.json({ success: true, user: req.user });
     } catch (error) { next(error); }
   }
 
