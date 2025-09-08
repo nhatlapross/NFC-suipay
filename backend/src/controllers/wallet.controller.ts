@@ -59,7 +59,7 @@ export class WalletController {
       const cacheKey = `balance:${address}`;
       
       // Check cache
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached(cacheKey);
       if (cached) {
         return res.json({
           success: true,

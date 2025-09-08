@@ -3,7 +3,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import { Server as SocketIOServer } from 'socket.io';
 import dotenv from 'dotenv';
 import 'express-async-errors';
 
@@ -12,20 +12,26 @@ dotenv.config();
 
 // Import configurations
 import { connectDatabase } from './config/database';
-// import { connectRedis } from './config/redis.config';
+import { initRedis, redisClient } from './config/redis.config';
 import { initSuiClient } from './config/sui.config';
 
 // Import middleware
 import { corsMiddleware } from './middleware/cors.middleware';
 import { errorMiddleware } from './middleware/error.middleware';
 import { rateLimiter } from './middleware/rateLimit.middleware';
+// import { performanceMiddleware } from './middleware/performance.middleware';
 
 // Import routes
 import routes from './routes';
+import fastPaymentRoutes from './routes/fastPayment.routes';
+
+// Import services and workers
+import { socketService } from './services/socket.service';
+import { startPaymentWorkers } from './workers/paymentWorker';
+import { startNotificationWorkers } from './workers/notificationWorker';
 
 // Import utils
 import logger from './utils/logger';
-import { setupWebSocket } from './utils/websocket';
 
 const app: Application = express();
 const PORT = process.env.PORT || 8080;
@@ -34,9 +40,40 @@ const HOST = process.env.HOST || 'localhost';
 // Create HTTP server
 const server = createServer(app);
 
-// Setup WebSocket
-const wss = new WebSocketServer({ server, path: '/ws' });
-setupWebSocket(wss);
+// Setup Socket.io
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  path: '/socket.io'
+});
+
+// Initialize socket service
+socketService.initialize(io);
+
+// Setup Socket.io connection handling
+io.on('connection', (socket) => {
+  logger.info(`Socket connected: ${socket.id}`);
+  
+  socket.on('authenticate', (data) => {
+    const { userId, token: _token } = data;
+    
+    // TODO: Verify JWT token here
+    if (userId) {
+      socketService.addUserSocket(userId, socket.id);
+      socket.join(`user:${userId}`);
+      socket.emit('authenticated', { success: true, userId });
+    }
+  });
+  
+  socket.on('disconnect', () => {
+    logger.info(`Socket disconnected: ${socket.id}`);
+    // Find and remove user socket (simplified approach)
+    // In production, you might want to store socket-to-user mapping
+  });
+});
 
 // Middleware
 app.use(helmet({
@@ -58,6 +95,22 @@ app.use(morgan('combined', { stream: { write: (message:any) => logger.info(messa
 // Rate limiting
 app.use('/api/', rateLimiter);
 
+// Performance monitoring
+// app.use(performanceMiddleware);
+
+// Ensure Redis is connected for each request
+app.use(async (_req, _res, next) => {
+  try {
+    if (!redisClient.isReady) {
+      await initRedis();
+    }
+    next();
+  } catch (error) {
+    console.error('Redis connection error:', error);
+    next(); // Continue without Redis (degraded mode)
+  }
+});
+
 // Health check
 app.get('/health', (_req:any, res:any) => {
   res.json({
@@ -70,6 +123,7 @@ app.get('/health', (_req:any, res:any) => {
 
 // API Routes
 app.use('/api', routes);
+app.use('/api/fast-payment', fastPaymentRoutes);
 
 // Static files
 app.use('/uploads', express.static('uploads'));
@@ -92,19 +146,27 @@ async function startServer() {
     await connectDatabase();
     logger.info('✅ MongoDB connected');
 
-    // Connect to Redis
-    // await connectRedis();
-    // logger.info('✅ Redis connected');
+    // Initialize Redis Cloud before starting server
+    console.log('🔄 Initializing Redis Cloud...');
+    await initRedis();
+    logger.info('📡 Redis Cloud: CONNECTED');
 
     // Initialize Sui client
     await initSuiClient();
     logger.info('✅ Sui client initialized');
 
+    // Start workers
+    startPaymentWorkers();
+    startNotificationWorkers();
+    logger.info('⚡ Background workers started');
+
     // Start server
     server.listen(PORT, () => {
       logger.info(`🚀 Server running on http://${HOST}:${PORT}`);
       logger.info(`📝 Environment: ${process.env.NODE_ENV}`);
-      logger.info(`🔌 WebSocket server running on ws://${HOST}:${PORT}/ws`);
+      logger.info(`🔌 Socket.io server running on http://${HOST}:${PORT}/socket.io`);
+      logger.info(`⚡ Background job processing active`);
+      logger.info(`🎯 Ready for async NFC payments!`);
     });
 
   } catch (error) {

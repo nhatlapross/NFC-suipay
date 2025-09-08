@@ -5,8 +5,11 @@ import { Card } from '../models/Card.model';
 import { User } from '../models/User.model';
 import { Merchant } from '../models/Merchant.model';
 import { Transaction } from '../models/Transaction.model';
-import { getCached, setCached } from '../config/redis.config';
+import { getCached, setCached, NFCCacheKeys } from '../config/redis.config';
 import { getSuiClient } from '../config/sui.config';
+import { paymentQueue } from '../config/queue.config';
+import { socketService } from '../services/socket.service';
+import { v4 as uuidv4 } from 'uuid';
 import logger from '../utils/logger';
 
 const paymentService = new PaymentService();
@@ -16,6 +19,15 @@ export class PaymentController {
     try {
       const { cardUuid, amount, merchantId } = req.body;
       const user = (req as any).user;
+      
+      // User authentication check
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required',
+          code: ERROR_CODES.UNAUTHORIZED,
+        });
+      }
       
       // Input validation
       if (!cardUuid || !amount || !merchantId) {
@@ -52,7 +64,7 @@ export class PaymentController {
       }
       
       // Validate card existence and ownership
-      const card = await Card.findOne({ cardUuid, userId: user.id });
+      const card = await Card.findOne({ cardUuid, userId: user._id });
       if (!card) {
         return res.status(404).json({
           success: false,
@@ -197,6 +209,282 @@ export class PaymentController {
     }
   }
 
+  // NFC validation without authentication - for terminal use
+  async validateNFCPayment(req: Request, res: Response, _next: NextFunction): Promise<void | Response> {
+    const startTime = Date.now();
+    const requestId = `nfc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    
+    try {
+      const { cardUuid, amount, merchantId, terminalId } = req.body;
+      
+      logger.info(`🔍 [${requestId}] NFC validation started`, { cardUuid, amount, merchantId });
+      
+      // Input validation
+      if (!cardUuid || !amount || !merchantId) {
+        const processingTime = Date.now() - startTime;
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields: cardUuid, amount, merchantId',
+          code: ERROR_CODES.VALIDATION_ERROR,
+          processingTime,
+          requestId,
+        });
+      }
+      
+      // Check cache first for fast response
+      const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
+      const cached = await getCached(validationKey);
+      
+      if (cached && cached.expiresAt > Date.now()) {
+        const processingTime = Date.now() - startTime;
+        logger.info(`✅ [${requestId}] Cache hit - ${processingTime}ms`);
+        
+        return res.json({
+          success: true,
+          authorized: cached.authorized,
+          authCode: cached.authCode,
+          processingTime,
+          fromCache: true,
+          requestId
+        });
+      }
+      
+      // Find card without requiring user authentication
+      const card = await Card.findOne({ cardUuid }).populate('userId');
+      if (!card) {
+        const processingTime = Date.now() - startTime;
+        await setCached(validationKey, { authorized: false, reason: 'CARD_NOT_FOUND', expiresAt: Date.now() + 30000 }, 30);
+        
+        return res.status(404).json({
+          success: false,
+          authorized: false,
+          error: 'Card not found',
+          code: ERROR_CODES.INVALID_CARD,
+          processingTime,
+          requestId,
+        });
+      }
+      
+      // Check card status
+      if (!card.isActive || card.blockedAt) {
+        const processingTime = Date.now() - startTime;
+        await setCached(validationKey, { authorized: false, reason: 'CARD_BLOCKED', expiresAt: Date.now() + 30000 }, 30);
+        
+        return res.status(400).json({
+          success: false,
+          authorized: false,
+          error: 'Card is blocked or inactive',
+          code: ERROR_CODES.INVALID_CARD,
+          processingTime,
+          requestId,
+        });
+      }
+      
+      // Verify merchant
+      const merchant = await Merchant.findOne({ merchantId });
+      if (!merchant || !merchant.isActive) {
+        const processingTime = Date.now() - startTime;
+        return res.status(404).json({
+          success: false,
+          authorized: false,
+          error: 'Invalid merchant',
+          code: ERROR_CODES.INVALID_INPUT,
+          processingTime,
+          requestId,
+        });
+      }
+      
+      // Check spending limits
+      const user = card.userId as any;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (card.dailySpent + amount > (card.dailyLimit || user.dailyLimit || CONSTANTS.DAILY_AMOUNT_LIMIT)) {
+        const processingTime = Date.now() - startTime;
+        await setCached(validationKey, { authorized: false, reason: 'DAILY_LIMIT', expiresAt: Date.now() + 30000 }, 30);
+        
+        return res.status(400).json({
+          success: false,
+          authorized: false,
+          error: 'Daily limit exceeded',
+          code: ERROR_CODES.LIMIT_EXCEEDED,
+          processingTime,
+          requestId,
+          details: {
+            dailySpent: card.dailySpent,
+            dailyLimit: card.dailyLimit || user.dailyLimit,
+            requestedAmount: amount,
+          }
+        });
+      }
+      
+      // Amount validation
+      if (amount > CONSTANTS.MAX_TRANSACTION_AMOUNT) {
+        const processingTime = Date.now() - startTime;
+        return res.status(400).json({
+          success: false,
+          authorized: false,
+          error: `Maximum amount is ${CONSTANTS.MAX_TRANSACTION_AMOUNT} SUI`,
+          code: ERROR_CODES.VALIDATION_ERROR,
+          processingTime,
+          requestId,
+        });
+      }
+      
+      // Generate auth code
+      const authCode = `NFC_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`.toUpperCase();
+      
+      // Cache successful validation
+      const result = {
+        authorized: true,
+        authCode,
+        expiresAt: Date.now() + 30000, // 30 seconds
+        cardInfo: {
+          cardType: card.cardType,
+          lastUsed: card.lastUsed,
+          remainingDaily: (card.dailyLimit || user.dailyLimit) - card.dailySpent,
+        },
+        merchantInfo: {
+          merchantName: merchant.merchantName,
+          terminalId: terminalId,
+        }
+      };
+      
+      await setCached(validationKey, result, 30);
+      
+      const processingTime = Date.now() - startTime;
+      logger.info(`✅ [${requestId}] NFC validation successful - ${processingTime}ms`);
+      
+      res.json({
+        success: true,
+        authorized: true,
+        authCode,
+        processingTime,
+        fromCache: false,
+        requestId,
+        validUntil: new Date(result.expiresAt),
+        details: result.cardInfo,
+        merchant: result.merchantInfo,
+      });
+      
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      logger.error(`❌ [${requestId}] NFC validation error (${processingTime}ms):`, error);
+      
+      res.status(500).json({
+        success: false,
+        authorized: false,
+        error: 'Validation service temporarily unavailable',
+        code: ERROR_CODES.INTERNAL_ERROR,
+        processingTime,
+        requestId,
+        fallback: true,
+      });
+    }
+  }
+
+  async processNFCPaymentAsync(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    try {
+      const { cardUuid, amount, merchantId, terminalId } = req.body;
+      const user = (req as any).user;
+      
+      // Input validation
+      if (!cardUuid || !amount || !merchantId || !terminalId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields',
+          code: ERROR_CODES.VALIDATION_ERROR,
+        });
+      }
+      
+      // Quick pre-validation using cache
+      const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
+      const cachedValidation = await getCached(validationKey);
+      
+      if (cachedValidation === false) {
+        return res.status(400).json({
+          success: false,
+          error: 'Payment validation failed',
+          code: ERROR_CODES.VALIDATION_ERROR,
+        });
+      }
+      
+      // Generate transaction ID
+      const transactionId = uuidv4();
+      
+      // Create pending transaction for immediate response
+      await Transaction.create({
+        transactionId,
+        userId: user._id,
+        cardUuid,
+        type: 'payment',
+        amount,
+        currency: 'SUI',
+        status: 'pending',
+        merchantId,
+        terminalId,
+        fromAddress: user.walletAddress,
+        metadata: {
+          ipAddress: req.ip || req.connection.remoteAddress,
+          userAgent: req.headers['user-agent'],
+          timestamp: new Date(),
+        },
+      });
+      
+      // Add to processing queue
+      const job = await paymentQueue.add(
+        'processNFCPayment',
+        {
+          transactionId,
+          paymentData: {
+            cardUuid,
+            amount,
+            merchantId,
+            terminalId,
+            userId: user.id,
+            userWalletAddress: user.walletAddress,
+          },
+        },
+        {
+          priority: amount > 1000000 ? 5 : 10, // Higher priority for large amounts
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+        }
+      );
+      
+      // Connect user to socket for real-time updates
+      socketService.addUserSocket(user.id, req.headers['x-socket-id'] as string || '');
+      
+      logger.info(`Async payment initiated`, {
+        transactionId,
+        jobId: job.id,
+        userId: user.id,
+        amount,
+      });
+      
+      // Return immediate response
+      res.status(202).json({
+        success: true,
+        message: 'Payment processing initiated',
+        transactionId,
+        status: 'pending',
+        estimatedProcessingTime: '2-5 seconds',
+        tracking: {
+          jobId: job.id,
+          transactionId,
+          websocketChannel: `user:${user.id}`,
+        },
+      });
+      
+    } catch (error) {
+      logger.error('Async payment initiation error:', error);
+      next(error);
+    }
+  }
+
   async processPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
       const { cardUuid, amount, merchantId, pin } = req.body;
@@ -234,7 +522,7 @@ export class PaymentController {
       
       // Rate limiting check
       const rateLimitKey = `payment_rate_${user.id}`;
-      const recentTransactions = await getCached<number>(rateLimitKey) || 0;
+      const recentTransactions = await getCached(rateLimitKey) || 0;
       
       if (recentTransactions >= CONSTANTS.DAILY_TRANSACTION_LIMIT) {
         return res.status(429).json({

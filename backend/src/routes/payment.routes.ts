@@ -7,11 +7,17 @@ import { paymentValidators } from '../validators/payment.validator';
 
 const router = Router();
 
-// Public routes
+// Public routes (no auth required for basic validation)
 router.post(
   '/validate',
   validate(paymentValidators.validatePayment),
   paymentController.validatePayment
+);
+
+// NFC validation endpoint (no auth required for terminals)
+router.post(
+  '/nfc-validate',
+  paymentController.validateNFCPayment
 );
 
 // Protected routes
@@ -22,6 +28,13 @@ router.post(
   paymentLimiter,
   validate(paymentValidators.processPayment),
   paymentController.processPayment
+);
+
+router.post(
+  '/process-async',
+  paymentLimiter,
+  validate(paymentValidators.processPayment),
+  paymentController.processNFCPaymentAsync
 );
 
 router.post(
