@@ -2,12 +2,17 @@
 import { useState } from "react";
 import {
     AlertTriangle,
-    Shield,
     Eye,
-    Ban,
     CheckCircle,
     XCircle,
     Clock,
+    ShieldAlert,
+    ShieldX,
+    ShieldCheck,
+    DollarSign,
+    Trash2,
+    Check,
+    CircleX,
 } from "lucide-react";
 
 const FraudMonitoring: React.FC = () => {
@@ -112,17 +117,25 @@ const FraudMonitoring: React.FC = () => {
         {
             label: "ACTIVE ALERTS",
             value: "12",
+            icon: ShieldAlert,
             color: "bg-[#FF005C] text-white",
         },
-        { label: "BLOCKED TODAY", value: "8", color: "bg-black text-white" },
+        {
+            label: "BLOCKED TODAY",
+            value: "8",
+            icon: ShieldX,
+            color: "bg-black text-white",
+        },
         {
             label: "FALSE POSITIVES",
             value: "3",
+            icon: ShieldCheck,
             color: "bg-[#00F0FF] text-black",
         },
         {
             label: "TOTAL SAVED",
             value: "$45.2K",
+            icon: DollarSign,
             color: "bg-white text-black border-2 border-black",
         },
     ];
@@ -140,20 +153,27 @@ const FraudMonitoring: React.FC = () => {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {fraudStats.map((stat, index) => (
-                    <div
-                        key={index}
-                        className={`${stat.color} p-6 border-4 border-black shadow-[6px_6px_0_black]`}
-                    >
-                        <div className="flex items-center justify-between mb-4">
-                            <Shield className="w-8 h-8" />
-                            <div className="text-2xl font-bold">
-                                {stat.value}
+                {fraudStats.map((stat, index) => {
+                    const Icon = stat.icon;
+                    return (
+                        <div
+                            key={index}
+                            className={`${stat.color} p-6 border-4 border-black shadow-[6px_6px_0_black]`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <Icon className="w-8 h-8" />
+                                <div className="text-right">
+                                    <div className="text-2xl font-bold">
+                                        {stat.value}
+                                    </div>
+                                    <div className="font-semibold text-sm">
+                                        {stat.label}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="font-bold text-sm">{stat.label}</div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Alert Controls */}
@@ -169,12 +189,12 @@ const FraudMonitoring: React.FC = () => {
                 </button>
 
                 <button className="p-4 bg-black text-white border-4 border-black font-bold hover:shadow-[6px_6px_0_black] transition-all">
-                    <CheckCircle className="w-6 h-6 mx-auto mb-2" />
+                    <Check className="w-6 h-6 mx-auto mb-2" />
                     <div>APPROVE ALL</div>
                 </button>
 
                 <button className="p-4 bg-white text-black border-4 border-black font-bold hover:shadow-[6px_6px_0_black] transition-all">
-                    <Ban className="w-6 h-6 mx-auto mb-2" />
+                    <Trash2 className="w-6 h-6 mx-auto mb-2" />
                     <div>CLEAR ALERTS</div>
                 </button>
             </div>
@@ -190,7 +210,7 @@ const FraudMonitoring: React.FC = () => {
                             key={alert.id}
                             className="border-2 border-black p-6 bg-white"
                         >
-                            <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-start justify-between">
                                 <div className="flex items-start gap-4">
                                     <AlertTriangle className="w-6 h-6 text-[#FF005C] mt-1" />
                                     <div>
@@ -253,7 +273,7 @@ const FraudMonitoring: React.FC = () => {
                                         }
                                         className="px-4 py-2 bg-[#FF005C] text-white border-2 border-black font-bold hover:shadow-[4px_4px_0_black] transition-all"
                                     >
-                                        <Ban className="w-4 h-4" />
+                                        <CircleX className="w-4 h-4" />
                                     </button>
 
                                     <button

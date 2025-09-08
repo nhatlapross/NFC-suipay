@@ -74,15 +74,15 @@ const SettingsScreen: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                        <span className="font-mono text-sm font-bold text-neo-black">
+                    <div className="relative flex items-center gap-4">
+                        <span className="absolute left-2.5 font-mono text-lg font-bold text-neo-black">
                             $
                         </span>
                         <input
                             type="number"
                             value={dailyLimit}
                             onChange={handleLimitChange}
-                            className="flex-1 p-3 border-4 border-neo-black font-mono font-bold text-lg bg-neo-white focus:outline-none focus:shadow-brutal"
+                            className="flex-1 p-3 pl-5 border-4 border-neo-black font-mono font-bold text-lg bg-neo-white focus:outline-none focus:shadow-brutal"
                             min="0"
                             max="10000"
                             step="50"

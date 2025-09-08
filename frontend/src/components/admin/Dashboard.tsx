@@ -14,7 +14,7 @@ const Dashboard: React.FC = () => {
             label: "ACTIVE CARDS",
             value: "2,847",
             icon: CreditCard,
-            color: "bg-[#FF005C]",
+            color: "bg-[#FF005C] text-white",
         },
         {
             label: "DAILY VOLUME",
@@ -94,14 +94,16 @@ const Dashboard: React.FC = () => {
                             key={index}
                             className={`${stat.color} p-6 border-4 border-black shadow-[6px_6px_0_black]`}
                         >
-                            <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center justify-between">
                                 <Icon className="w-8 h-8" />
-                                <div className="text-2xl font-bold">
-                                    {stat.value}
+                                <div className="flex flex-col justify-between">
+                                    <div className="text-2xl font-bold">
+                                        {stat.value}
+                                    </div>
+                                    <div className="font-semibold text-sm">
+                                        {stat.label}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="font-bold text-sm">
-                                {stat.label}
                             </div>
                         </div>
                     );
@@ -202,10 +204,10 @@ const Dashboard: React.FC = () => {
                                     {tx.type}
                                 </div>
                             </div>
+                            <div className="font-bold text-black">
+                                {tx.amount}
+                            </div>
                             <div className="flex items-center gap-4">
-                                <div className="font-bold text-black">
-                                    {tx.amount}
-                                </div>
                                 <div
                                     className={`px-3 py-1 border-2 border-black font-bold text-xs ${
                                         tx.status === "COMPLETED"

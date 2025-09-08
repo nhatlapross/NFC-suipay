@@ -23,12 +23,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
 
             {/* Balance Card */}
             <div className="bg-neo-cyan border-4 border-neo-black shadow-brutal p-6">
-                <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <p className="font-mono text-sm font-bold text-neo-black mb-1">
+                <div className="flex justify-between items-end mb-4">
+                    <div className="flex flex-col gap-1">
+                        <p className="font-mono text-sm font-bold text-neo-black">
                             CURRENT BALANCE
                         </p>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between gap-3">
                             <span className="text-4xl font-mono font-bold text-neo-black">
                                 {showBalance
                                     ? `$${mockWalletData.balance.toFixed(2)}`
@@ -36,7 +36,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                             </span>
                             <button
                                 onClick={onToggleBalance}
-                                className="p-2 bg-neo-white border-2 border-neo-black shadow-brutal-sm hover:shadow-none transition-shadow"
+                                className="p-2 self-end bg-neo-white border-2 border-neo-black shadow-brutal-sm hover:shadow-none transition-shadow"
                             >
                                 {showBalance ? (
                                     <EyeOff size={16} />
@@ -46,7 +46,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                             </button>
                         </div>
                     </div>
-                    <div className="bg-neo-pink p-3 border-2 border-neo-black">
+                    <div className="bg-neo-pink p-1 border-2 border-neo-black shadow-brutal-sm hover:shadow-none transition-shadow">
                         <Zap size={24} className="text-neo-white" />
                     </div>
                 </div>

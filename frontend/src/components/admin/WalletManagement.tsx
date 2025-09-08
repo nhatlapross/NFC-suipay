@@ -112,7 +112,7 @@ const WalletManagement: React.FC = () => {
             </div>
 
             {/* Summary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-right">
                 <div className="bg-[#00F0FF] p-6 border-4 border-black shadow-[6px_6px_0_black]">
                     <div className="text-2xl font-bold text-black">4</div>
                     <div className="font-bold text-sm text-black">
@@ -121,19 +121,19 @@ const WalletManagement: React.FC = () => {
                 </div>
                 <div className="bg-[#FF005C] p-6 border-4 border-black shadow-[6px_6px_0_black]">
                     <div className="text-2xl font-bold text-white">2</div>
-                    <div className="font-bold text-sm text-white">
+                    <div className="font-semibold text-sm text-white">
                         LOCKED CARDS
                     </div>
                 </div>
                 <div className="bg-black p-6 border-4 border-black shadow-[6px_6px_0_black]">
                     <div className="text-2xl font-bold text-white">1</div>
-                    <div className="font-bold text-sm text-white">
+                    <div className="font-semibold text-sm text-white">
                         SUSPENDED
                     </div>
                 </div>
                 <div className="bg-white p-6 border-4 border-black shadow-[6px_6px_0_black]">
                     <div className="text-2xl font-bold text-black">$13.7K</div>
-                    <div className="font-bold text-sm text-black">
+                    <div className="font-semibold text-sm text-black">
                         TOTAL BALANCE
                     </div>
                 </div>
@@ -141,7 +141,7 @@ const WalletManagement: React.FC = () => {
 
             {/* Cards List */}
             <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
-                <h2 className="text-xl font-bold mb-6 text-black">
+                <h2 className="text-xl font-semibold mb-6 text-black">
                     CARD MANAGEMENT
                 </h2>
                 <div className="space-y-4">
@@ -160,49 +160,46 @@ const WalletManagement: React.FC = () => {
                                         {card.holder}
                                     </div>
                                 </div>
-                                <div className="text-xl font-bold text-black">
-                                    {card.balance}
-                                </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <div
-                                    className={`px-3 py-2 border-2 border-black font-bold text-sm flex items-center gap-2 ${getStatusColor(
-                                        card.status
-                                    )}`}
+                            <div className="text-xl font-bold text-black">
+                                {card.balance}
+                            </div>
+
+                            <div
+                                className={`px-3 py-2 border-2 border-black font-bold text-sm flex items-center gap-2 ${getStatusColor(
+                                    card.status
+                                )}`}
+                            >
+                                {getStatusIcon(card.status)}
+                                {card.status}
+                            </div>
+
+                            <div className="text-sm font-bold text-gray-600">
+                                {card.lastUsed}
+                            </div>
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => toggleCardStatus(card.id)}
+                                    className={`p-3 border-2 border-black font-bold hover:shadow-[4px_4px_0_black] transition-all ${
+                                        card.status === "ACTIVE"
+                                            ? "bg-[#FF005C] text-white hover:bg-red-600"
+                                            : "bg-[#00F0FF] text-black hover:bg-cyan-400"
+                                    }`}
                                 >
-                                    {getStatusIcon(card.status)}
-                                    {card.status}
-                                </div>
-                                <div className="text-sm font-bold text-gray-600">
-                                    {card.lastUsed}
-                                </div>
-
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() =>
-                                            toggleCardStatus(card.id)
-                                        }
-                                        className={`p-3 border-2 border-black font-bold hover:shadow-[4px_4px_0_black] transition-all ${
-                                            card.status === "ACTIVE"
-                                                ? "bg-[#FF005C] text-white hover:bg-red-600"
-                                                : "bg-[#00F0FF] text-black hover:bg-cyan-400"
-                                        }`}
-                                    >
-                                        {card.status === "ACTIVE" ? (
-                                            <Lock className="w-4 h-4" />
-                                        ) : (
-                                            <Unlock className="w-4 h-4" />
-                                        )}
-                                    </button>
-
-                                    <button
-                                        onClick={() => resetKey(card.id)}
-                                        className="p-3 bg-black text-white border-2 border-black font-bold hover:bg-gray-800 hover:shadow-[4px_4px_0_black] transition-all"
-                                    >
-                                        <RotateCcw className="w-4 h-4" />
-                                    </button>
-                                </div>
+                                    {card.status === "ACTIVE" ? (
+                                        <Lock className="w-4 h-4" />
+                                    ) : (
+                                        <Unlock className="w-4 h-4" />
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => resetKey(card.id)}
+                                    className="p-3 bg-black text-white border-2 border-black font-bold hover:bg-gray-800 hover:shadow-[4px_4px_0_black] transition-all"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
                     ))}

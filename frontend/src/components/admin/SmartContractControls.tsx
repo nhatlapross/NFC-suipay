@@ -75,16 +75,18 @@ const SmartContractControls: React.FC = () => {
                             key={index}
                             className={`${bgColor} p-6 border-4 border-black shadow-[6px_6px_0_black]`}
                         >
-                            <div
-                                className={`flex items-center justify-between mb-4 ${textColor}`}
-                            >
+                            <div className="flex items-center justify-between">
                                 <Icon className="w-8 h-8" />
-                                <div className="text-2xl font-bold">
-                                    {stat.value}
+                                <div className={`${textColor} text-right`}>
+                                    <div className="text-2xl font-bold">
+                                        {stat.value}
+                                    </div>
+                                    <div
+                                        className={`font-semibold text-sm ${textColor}`}
+                                    >
+                                        {stat.label}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className={`font-bold text-sm ${textColor}`}>
-                                {stat.label}
                             </div>
                         </div>
                     );
