@@ -25,28 +25,86 @@ export class UserController {
   }
 
   // Settings
-  async getSettings(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getSettings(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const settings = {
+        twoFactorAuth: !!req.user.twoFactorEnabled,
+        dailyLimit: req.user.dailyLimit,
+        monthlyLimit: req.user.monthlyLimit,
+      };
+      return res.json({ success: true, settings });
     } catch (error) { next(error); }
   }
 
-  async updateSettings(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async updateSettings(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      // Only allow mapped settings updates for now
+      const { twoFactorAuth } = req.body || {};
+
+      if (typeof twoFactorAuth === 'boolean') {
+        req.user.twoFactorEnabled = twoFactorAuth;
+      }
+
+      await req.user.save();
+
+      return res.json({
+        success: true,
+        settings: {
+          twoFactorAuth: !!req.user.twoFactorEnabled,
+          dailyLimit: req.user.dailyLimit,
+          monthlyLimit: req.user.monthlyLimit,
+        },
+      });
     } catch (error) { next(error); }
   }
 
   // Limits
-  async getLimits(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async getLimits(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      return res.json({
+        success: true,
+        limits: {
+          dailyLimit: req.user.dailyLimit,
+          monthlyLimit: req.user.monthlyLimit,
+        },
+      });
     } catch (error) { next(error); }
   }
 
-  async updateLimits(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async updateLimits(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const { dailyLimit, monthlyLimit } = req.body || {};
+
+      if (typeof dailyLimit === 'number' && dailyLimit >= 0) {
+        req.user.dailyLimit = dailyLimit;
+      }
+      if (typeof monthlyLimit === 'number' && monthlyLimit >= 0) {
+        req.user.monthlyLimit = monthlyLimit;
+      }
+
+      await req.user.save();
+
+      return res.json({
+        success: true,
+        limits: {
+          dailyLimit: req.user.dailyLimit,
+          monthlyLimit: req.user.monthlyLimit,
+        },
+      });
     } catch (error) { next(error); }
   }
 

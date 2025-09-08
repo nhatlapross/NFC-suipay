@@ -78,6 +78,15 @@ export async function updateUserProfileAPI(data: any) {
   return api.put('/user/profile', data);
 }
 
+// User Settings APIs
+export async function getUserSettingsAPI() {
+  return api.get('/user/settings');
+}
+
+export async function updateUserSettingsAPI(data: { twoFactorAuth?: boolean }) {
+  return api.put('/user/settings', data);
+}
+
 export async function setPinAPI(pin: string, confirmPin: string) {
   return api.post('/user/pin/set', { pin, confirmPin });
 }
@@ -156,6 +165,15 @@ export async function getWalletTransactionsAPI(params?: {
 
 export async function requestFaucetAPI() {
   return api.post('/wallet/faucet');
+}
+
+// User limits APIs
+export async function getUserLimitsAPI() {
+  return api.get('/user/limits');
+}
+
+export async function updateUserLimitsAPI(data: { dailyLimit?: number; monthlyLimit?: number }) {
+  return api.put('/user/limits', data);
 }
 
 // Merchant APIs (if user is merchant)

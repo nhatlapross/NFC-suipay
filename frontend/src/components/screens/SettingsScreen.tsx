@@ -1,18 +1,91 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Lock, Unlock, DollarSign, Shield, Smartphone } from "lucide-react";
-import { mockWalletData } from "@/data/mockData";
+import { getUserSettingsAPI, updateUserSettingsAPI, getUserLimitsAPI, updateUserLimitsAPI } from "@/lib/api-client";
 
 const SettingsScreen: React.FC = () => {
-    const [cardLocked, setCardLocked] = useState(mockWalletData.cardLocked);
-    const [dailyLimit, setDailyLimit] = useState(mockWalletData.dailyLimit);
-    const [otpEnabled, setOtpEnabled] = useState(mockWalletData.otpEnabled);
-    const [twoFactorEnabled, setTwoFactorEnabled] = useState(
-        mockWalletData.twoFactorEnabled
-    );
+    const [cardLocked, setCardLocked] = useState(false);
+    const [dailyLimit, setDailyLimit] = useState(0);
+    const [otpEnabled, setOtpEnabled] = useState(false);
+    const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+    const [monthlyLimit, setMonthlyLimit] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const [message, setMessage] = useState("");
 
-    const handleLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    useEffect(() => {
+        const loadSettings = async () => {
+            setLoading(true);
+            setError("");
+            try {
+                const resp: any = await getUserSettingsAPI();
+                if (resp?.success && resp?.settings) {
+                    setTwoFactorEnabled(!!resp.settings.twoFactorAuth);
+                    setDailyLimit(resp.settings.dailyLimit ?? 0);
+                    setMonthlyLimit(resp.settings.monthlyLimit ?? 0);
+                } else {
+                    setError("Failed to load settings");
+                }
+                // Also load limits explicitly to be safe
+                try {
+                    const limits: any = await getUserLimitsAPI();
+                    if (limits?.success && limits?.limits) {
+                        setDailyLimit(limits.limits.dailyLimit ?? 0);
+                        setMonthlyLimit(limits.limits.monthlyLimit ?? 0);
+                    }
+                } catch {}
+            } catch (err: any) {
+                setError(err?.response?.data?.error || "Failed to load settings");
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    const handleDailyLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = parseInt(e.target.value) || 0;
         setDailyLimit(value);
+    };
+
+    const handleMonthlyLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = parseInt(e.target.value) || 0;
+        setMonthlyLimit(value);
+    };
+
+    const saveLimits = async () => {
+        setSaving(true);
+        setError("");
+        setMessage("");
+        try {
+            const resp: any = await updateUserLimitsAPI({ dailyLimit, monthlyLimit });
+            if (resp?.success && resp?.limits) {
+                setDailyLimit(resp.limits.dailyLimit ?? dailyLimit);
+                setMonthlyLimit(resp.limits.monthlyLimit ?? monthlyLimit);
+                setMessage("Spending limits updated");
+            }
+        } catch (err: any) {
+            setError(err?.response?.data?.error || "Failed to update limits");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const toggleTwoFactor = async () => {
+        setSaving(true);
+        setError("");
+        setMessage("");
+        try {
+            const resp: any = await updateUserSettingsAPI({ twoFactorAuth: !twoFactorEnabled });
+            if (resp?.success && resp?.settings) {
+                setTwoFactorEnabled(!!resp.settings.twoFactorAuth);
+                setMessage("Security settings updated");
+            }
+        } catch (err: any) {
+            setError(err?.response?.data?.error || "Failed to update settings");
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -25,7 +98,23 @@ const SettingsScreen: React.FC = () => {
                 <div className="w-16 h-1 bg-neo-pink mx-auto"></div>
             </div>
 
-            {/* Card Control */}
+            {loading && (
+                <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                    <p className="font-mono">Đang tải cài đặt...</p>
+                </div>
+            )}
+            {error && (
+                <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                    <p className="font-mono text-red-600">{error}</p>
+                </div>
+            )}
+            {message && (
+                <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                    <p className="font-mono text-green-700">{message}</p>
+                </div>
+            )}
+
+            {/* Card Control (local only demo) */}
             <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
                 <div className="flex items-center gap-4 mb-4">
                     <div className="bg-neo-pink p-3 border-2 border-neo-black">
@@ -57,7 +146,7 @@ const SettingsScreen: React.FC = () => {
                 </button>
             </div>
 
-            {/* Daily Spending Limit */}
+            {/* Daily Spending Limit (read-only from settings for now) */}
             <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
                 <div className="flex items-center gap-4 mb-4">
                     <div className="bg-neo-cyan p-3 border-2 border-neo-black">
@@ -81,11 +170,12 @@ const SettingsScreen: React.FC = () => {
                         <input
                             type="number"
                             value={dailyLimit}
-                            onChange={handleLimitChange}
+                            onChange={handleDailyLimitChange}
                             className="flex-1 p-3 pl-5 border-4 border-neo-black font-mono font-bold text-lg bg-neo-white focus:outline-none focus:shadow-brutal"
                             min="0"
                             max="10000"
                             step="50"
+                            disabled={saving}
                         />
                     </div>
 
@@ -99,12 +189,78 @@ const SettingsScreen: React.FC = () => {
                                         ? "bg-neo-black text-neo-white"
                                         : "bg-neo-white text-neo-black hover:bg-neo-cyan"
                                 }`}
+                                disabled={saving}
                             >
                                 ${amount}
                             </button>
                         ))}
                     </div>
                 </div>
+            </div>
+
+            {/* Monthly Limit */}
+            <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                <div className="flex items-center gap-4 mb-4">
+                    <div className="bg-neo-cyan p-3 border-2 border-neo-black">
+                        <DollarSign size={24} className="text-neo-black" />
+                    </div>
+                    <div>
+                        <h3 className="font-mono font-bold text-lg text-neo-black">
+                            MONTHLY LIMIT
+                        </h3>
+                        <p className="font-mono text-xs text-neo-black opacity-70">
+                            Set your monthly spending limit
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="relative flex items-center gap-4">
+                        <span className="absolute left-2.5 font-mono text-lg font-bold text-neo-black">
+                            $
+                        </span>
+                        <input
+                            type="number"
+                            value={monthlyLimit}
+                            onChange={handleMonthlyLimitChange}
+                            className="flex-1 p-3 pl-5 border-4 border-neo-black font-mono font-bold text-lg bg-neo-white focus:outline-none focus:shadow-brutal"
+                            min="0"
+                            max="10000"
+                            step="50"
+                            disabled={saving}
+                        />
+                    </div>
+
+                    <div className="flex gap-2">
+                        {[500, 1000, 2000, 5000].map((amount) => (
+                            <button
+                                key={amount}
+                                onClick={() => setMonthlyLimit(amount)}
+                                className={`flex-1 py-2 font-mono text-xs font-bold border-2 border-neo-black transition-colors ${
+                                    monthlyLimit === amount
+                                        ? "bg-neo-black text-neo-white"
+                                        : "bg-neo-white text-neo-black hover:bg-neo-cyan"
+                                }`}
+                                disabled={saving}
+                            >
+                                ${amount}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Save Limits Action */}
+            <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
+                <button
+                    onClick={saveLimits}
+                    disabled={saving}
+                    className={`w-full py-4 font-mono font-bold text-lg border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow ${
+                        saving ? 'bg-gray-300 text-gray-600' : 'bg-neo-black text-neo-white'
+                    }`}
+                >
+                    {saving ? 'SAVING...' : 'SAVE LIMITS'}
+                </button>
             </div>
 
             {/* Security Settings */}
@@ -124,7 +280,7 @@ const SettingsScreen: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                    {/* OTP Toggle */}
+                    {/* OTP Toggle (local-only) */}
                     <div className="flex items-center justify-between p-4 border-2 border-neo-black">
                         <div className="flex items-center gap-3">
                             <Smartphone size={20} className="text-neo-black" />
@@ -149,7 +305,7 @@ const SettingsScreen: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* 2FA Toggle */}
+                    {/* 2FA Toggle (persisted) */}
                     <div className="flex items-center justify-between p-4 border-2 border-neo-black">
                         <div className="flex items-center gap-3">
                             <Shield size={20} className="text-neo-black" />
@@ -163,16 +319,15 @@ const SettingsScreen: React.FC = () => {
                             </div>
                         </div>
                         <button
-                            onClick={() =>
-                                setTwoFactorEnabled(!twoFactorEnabled)
-                            }
+                            onClick={toggleTwoFactor}
+                            disabled={saving}
                             className={`px-4 py-2 font-mono text-xs font-bold border-2 border-neo-black transition-colors ${
                                 twoFactorEnabled
                                     ? "bg-neo-cyan text-neo-black"
                                     : "bg-neo-white text-neo-black hover:bg-neo-pink hover:text-neo-white"
                             }`}
                         >
-                            {twoFactorEnabled ? "ON" : "OFF"}
+                            {twoFactorEnabled ? (saving ? "SAVING..." : "ON") : (saving ? "SAVING..." : "OFF")}
                         </button>
                     </div>
                 </div>
