@@ -18,6 +18,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [otp, setOtp] = useState('');
   
   const { login, register } = useAuth();
@@ -59,6 +60,11 @@ export default function AuthPage() {
     setError('');
     
     try {
+      if (password !== confirmPassword) {
+        setError('Mật khẩu xác nhận không khớp');
+        setLoading(false);
+        return;
+      }
       await register({ email, password, fullName, phoneNumber });
       setMessage('Đăng ký thành công! Vui lòng xác thực số điện thoại.');
       setMode('verify');
@@ -103,13 +109,17 @@ export default function AuthPage() {
     }
   };
 
+  const isRegister = mode === 'register';
+
   return (
-    <div className="min-h-screen bg-neo-cyan flex items-center justify-center p-4">
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isRegister ? 'bg-neo-pink' : 'bg-neo-cyan'}`}>
       <div className="w-full max-w-md">
         {/* Title */}
         <div className="text-center mb-6">
-          <h1 className="font-mono font-bold text-3xl text-neo-black tracking-wider">HYBRID WALLET</h1>
-          <p className="font-mono text-xs text-neo-black opacity-80 mt-1">SECURE • FAST • BRUTAL</p>
+          <h1 className="font-mono font-bold text-3xl text-neo-white tracking-wider">HYBRID WALLET</h1>
+          <p className={`font-mono text-xs ${isRegister ? 'text-neo-white' : 'text-neo-black'} opacity-80 mt-1`}>
+            {isRegister ? 'JOIN THE REVOLUTION' : 'SECURE • FAST • BRUTAL'}
+          </p>
         </div>
 
         {/* Panel */}
@@ -196,32 +206,11 @@ export default function AuthPage() {
           {mode === 'register' && (
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
-                <label className="block font-mono text-xs font-bold text-neo-black mb-2">FULL NAME</label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
-                  required
-                />
-              </div>
-              <div>
                 <label className="block font-mono text-xs font-bold text-neo-black mb-2">EMAIL</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block font-mono text-xs font-bold text-neo-black mb-2">PHONE NUMBER</label>
-                <input
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="+84901234567"
                   className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
                   required
                 />
@@ -237,6 +226,39 @@ export default function AuthPage() {
                   minLength={8}
                 />
               </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">CONFIRM PASSWORD</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                  minLength={8}
+                />
+              </div>
+              {/* Required fields for backend */}
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">FULL NAME</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">PHONE NUMBER</label>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+84901234567"
+                  className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
+                  required
+                />
+              </div>
               <button
                 type="submit"
                 disabled={loading}
@@ -244,15 +266,6 @@ export default function AuthPage() {
               >
                 {loading ? 'CREATING...' : 'CREATE ACCOUNT'}
               </button>
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setMode('login')}
-                  className="font-mono text-xs underline"
-                >
-                  ALREADY HAVE AN ACCOUNT? LOGIN
-                </button>
-              </div>
             </form>
           )}
 
@@ -313,6 +326,21 @@ export default function AuthPage() {
               className="w-full py-3 bg-neo-blue text-neo-black font-mono font-bold border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow"
             >
               CREATE ACCOUNT
+            </button>
+          </div>
+        )}
+
+        {mode === 'register' && (
+          <div className="mt-6">
+            <p className="font-mono font-bold text-center text-xs text-neo-white opacity-80 mb-3">
+              ALREADY HAVE AN ACCOUNT?
+            </p>
+            <button
+              type="button"
+              onClick={() => setMode('login')}
+              className="w-full py-3 bg-neo-cyan text-neo-black font-mono font-bold border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow"
+            >
+              LOGIN
             </button>
           </div>
         )}
