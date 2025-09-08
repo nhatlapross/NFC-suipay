@@ -406,3 +406,35 @@ npm run migrate
 ## 📄 License
 
 MIT License - xem file [LICENSE](./LICENSE) để biết chi tiết.
+
+## 👤 Test Accounts (Local)
+
+- Admin
+  - Email: `admin@nfcpayment.com`
+  - Password: `P@ssw0rd123`
+  - Ghi chú: Nếu mật khẩu chưa khớp với dữ liệu hiện tại, đặt lại mật khẩu trong MongoDB bằng cách cập nhật hash hoặc bật biến môi trường `ALLOW_ADMIN_SIGNUP=true` rồi đăng ký tài khoản admin mới qua endpoint `/api/auth/register` với `role: "admin"`.
+
+- User
+  - Email: `testuser+1@example.com`
+  - Password: `P@ssw0rd123`
+
+### Tạo admin mới bằng đăng ký (dev only)
+
+1) Thêm vào `.env` của backend và khởi động lại service:
+
+```
+ALLOW_ADMIN_SIGNUP=true
+```
+
+2) Gọi đăng ký:
+
+```
+POST /api/auth/register
+{
+  "email": "admin2@nfcpayment.com",
+  "password": "P@ssw0rd123",
+  "phoneNumber": "+84900000102",
+  "fullName": "Admin Two",
+  "role": "admin"
+}
+```
