@@ -396,6 +396,13 @@ export class PaymentController {
           code: ERROR_CODES.VALIDATION_ERROR,
         });
       }
+
+      // Check if user has a wallet address
+      if (!user.walletAddress) {
+        // For testing purposes, use a default wallet address
+        // In production, this should prompt user to set up their wallet
+        user.walletAddress = '0xdefault_user_wallet_' + user._id;
+      }
       
       // Quick pre-validation using cache
       const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
@@ -408,26 +415,47 @@ export class PaymentController {
           code: ERROR_CODES.VALIDATION_ERROR,
         });
       }
+
+      // Find merchant by merchantId string
+      const merchant = await Merchant.findOne({ merchantId });
+      if (!merchant) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid merchant',
+          code: ERROR_CODES.VALIDATION_ERROR,
+        });
+      }
       
       // Generate transaction ID
       const transactionId = uuidv4();
+      
+      // Calculate gas fee (example: 0.001 SUI)
+      const gasFee = 0.001;
+      const totalAmount = amount + gasFee;
       
       // Create pending transaction for immediate response
       await Transaction.create({
         transactionId,
         userId: user._id,
         cardUuid,
+        txHash: 'pending_' + transactionId,  // Temporary hash for pending transaction
         type: 'payment',
         amount,
         currency: 'SUI',
         status: 'pending',
-        merchantId,
+        merchantId: (merchant as any)._id,  // Use the MongoDB ObjectId
+        merchantName: merchant.merchantName,
         terminalId,
         fromAddress: user.walletAddress,
+        toAddress: merchant.walletAddress,  // Add merchant wallet address
+        gasFee,
+        totalAmount,  // Add calculated total
         metadata: {
           ipAddress: req.ip || req.connection.remoteAddress,
           userAgent: req.headers['user-agent'],
           timestamp: new Date(),
+          merchantIdString: merchantId,  // Store original merchantId string for reference
+          terminalId,
         },
       });
       
@@ -439,10 +467,13 @@ export class PaymentController {
           paymentData: {
             cardUuid,
             amount,
-            merchantId,
+            merchantId: (merchant as any)._id.toString(),
+            merchantWalletAddress: merchant.walletAddress,
             terminalId,
             userId: user.id,
             userWalletAddress: user.walletAddress,
+            gasFee,
+            totalAmount,
           },
         },
         {

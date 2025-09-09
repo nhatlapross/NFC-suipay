@@ -3,7 +3,7 @@ import { paymentQueue, notificationQueue, blockchainQueue } from '../config/queu
 import { Transaction } from '../models/Transaction.model';
 import { User } from '../models/User.model';
 import { Card } from '../models/Card.model';
-// import { suiService } from '../services/sui.service';
+import processNFCPaymentJob from '../queues/payment.processor';
 import { setCached, getCached, NFCCacheKeys } from '../config/redis.config';
 import logger from '../utils/logger';
 import { socketService } from '../services/socket.service';
@@ -14,9 +14,12 @@ interface PaymentJobData {
     cardUuid: string;
     amount: number;
     merchantId: string;
+    merchantWalletAddress: string;
     terminalId: string;
     userId: string;
     userWalletAddress: string;
+    gasFee: number;
+    totalAmount: number;
   };
 }
 
@@ -24,8 +27,11 @@ interface PaymentJobData {
 export function startPaymentWorkers() {
   logger.info('🚀 Starting payment workers...');
   
-  // Main payment processor
-  paymentQueue.process('processNFCPayment', 5, async (job: Job<PaymentJobData>) => {
+  // Main payment processor - use the new comprehensive processor
+  paymentQueue.process('processNFCPayment', 5, processNFCPaymentJob);
+  
+  // Legacy payment processor (for backward compatibility)
+  paymentQueue.process('legacyProcessPayment', 3, async (job: Job<PaymentJobData>) => {
     const { transactionId, paymentData } = job.data;
     
     logger.info(`Processing payment job ${job.id} for transaction ${transactionId}`);

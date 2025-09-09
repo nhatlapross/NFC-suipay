@@ -47,6 +47,22 @@ class SocketService {
     }
   }
 
+  // Emit custom event to specific user
+  emitToUser(userId: string, event: string, data: any) {
+    if (!this.io) {
+      logger.warn('Socket.io not initialized');
+      return;
+    }
+
+    const userSocketIds = this.userSockets.get(userId);
+    if (userSocketIds && userSocketIds.size > 0) {
+      userSocketIds.forEach(socketId => {
+        this.io?.to(socketId).emit(event, data);
+      });
+      logger.info(`Event ${event} sent to user ${userId}`, data);
+    }
+  }
+
   // Broadcast to all connected clients
   broadcast(event: string, data: any) {
     if (!this.io) {

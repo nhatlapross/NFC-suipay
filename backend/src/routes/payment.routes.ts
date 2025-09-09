@@ -34,7 +34,7 @@ router.post(
   '/process-async',
   paymentLimiter,
   validate(paymentValidators.processPayment),
-  paymentController.processNFCPaymentAsync
+  paymentController.processNFCPaymentAsync.bind(paymentController)
 );
 
 router.post(

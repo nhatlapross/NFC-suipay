@@ -11,9 +11,6 @@ import logger from '../utils/logger';
 import { getFaucetHost, requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 
 export class WalletController {
-  private get suiClient() {
-    return getSuiClient();
-  }
 
   async createWallet(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
@@ -68,7 +65,8 @@ export class WalletController {
       }
       
       // Get balance from blockchain
-      const balance = await this.suiClient.getBalance({
+      const suiClient = getSuiClient();
+      const balance = await suiClient.getBalance({
         owner: address,
         coinType: '0x2::sui::SUI',
       });
@@ -97,7 +95,7 @@ export class WalletController {
       const cursor = req.query.cursor as string | undefined;
       const limit = parseInt(req.query.limit as string) || 50;
       
-      const objects = await this.suiClient.getOwnedObjects({
+      const objects = await getSuiClient().getOwnedObjects({
         owner: address,
         cursor,
         limit,
@@ -160,7 +158,7 @@ export class WalletController {
       }
       
       // Check wallet balance
-      const balance = await this.suiClient.getBalance({
+      const balance = await getSuiClient().getBalance({
         owner: user.walletAddress,
         coinType: '0x2::sui::SUI',
       });
@@ -182,9 +180,16 @@ export class WalletController {
         });
       }
       
-      // Decrypt private key and create keypair
-      const privateKey = decryptPrivateKey(user.encryptedPrivateKey);
-      const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+      // Handle private key - could be encrypted base64 or bech32
+      let keypair: Ed25519Keypair;
+      if (user.encryptedPrivateKey.startsWith('suiprivkey1')) {
+        // It's a bech32 format, use directly
+        keypair = Ed25519Keypair.fromSecretKey(user.encryptedPrivateKey);
+      } else {
+        // It's encrypted base64, decrypt first
+        const privateKey = decryptPrivateKey(user.encryptedPrivateKey);
+        keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+      }
       
       // Build transfer transaction
       const tx = new Transaction();
@@ -198,7 +203,7 @@ export class WalletController {
       tx.setGasBudget(CONSTANTS.DEFAULT_GAS_BUDGET);
       
       // Execute transaction
-      const result = await this.suiClient.signAndExecuteTransaction({
+      const result = await getSuiClient().signAndExecuteTransaction({
         transaction: tx,
         signer: keypair,
         options: {
@@ -209,7 +214,7 @@ export class WalletController {
       });
       
       // Wait for transaction confirmation
-      await this.suiClient.waitForTransaction({
+      await getSuiClient().waitForTransaction({
         digest: result.digest,
       });
       
@@ -344,7 +349,7 @@ export class WalletController {
         // Get wallet balance for response
         let balance = 0;
         try {
-          const balanceResult = await this.suiClient.getBalance({
+          const balanceResult = await getSuiClient().getBalance({
             owner: walletAddress,
             coinType: '0x2::sui::SUI',
           });
@@ -433,7 +438,7 @@ export class WalletController {
         // Get wallet balance
         let balance = 0;
         try {
-          const balanceResult = await this.suiClient.getBalance({
+          const balanceResult = await getSuiClient().getBalance({
             owner: user.walletAddress,
             coinType: '0x2::sui::SUI',
           });
@@ -528,7 +533,7 @@ export class WalletController {
         await setCached(`balance:${user.walletAddress}`, null, 0);
         
         // Get updated balance
-        const balanceResult = await this.suiClient.getBalance({
+        const balanceResult = await getSuiClient().getBalance({
           owner: user.walletAddress,
           coinType: '0x2::sui::SUI',
         });
@@ -665,11 +670,11 @@ export class WalletController {
       
       // Get balance and objects in parallel
       const [balanceResult, objectsResult] = await Promise.all([
-        this.suiClient.getBalance({
+        getSuiClient().getBalance({
           owner: user.walletAddress,
           coinType: '0x2::sui::SUI',
         }),
-        this.suiClient.getOwnedObjects({
+        getSuiClient().getOwnedObjects({
           owner: user.walletAddress,
           limit: 10,
           options: {
