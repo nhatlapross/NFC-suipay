@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { adminController } from '../controllers/admin.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validation.middleware';
@@ -209,6 +209,63 @@ router.post(
 router.get(
   '/health',
   adminController.getSystemHealth
+);
+
+// === PAYMENT MONITORING ROUTES ===
+// Payment failure analysis
+router.get(
+  '/payments/failures',
+  validate(adminValidators.getTransactions),
+  adminController.getTransactions
+);
+
+// Merchant payment health overview
+router.get(
+  '/payments/merchant-health',
+  adminController.getMerchants
+);
+
+router.get(
+  '/payments/merchant-health/:merchantId',
+  validate(adminValidators.getMerchant),
+  adminController.getMerchant
+);
+
+// Card health monitoring
+router.get(
+  '/payments/card-health',
+  adminController.getCards
+);
+
+// Real-time payment monitoring
+router.get(
+  '/payments/live',
+  validate(adminValidators.getTransactions),
+  (req: Request, _res: Response, next: NextFunction) => {
+    // Add real-time filter for last hour
+    if (!req.query.startDate) {
+      req.query.startDate = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    }
+    next();
+  },
+  adminController.getTransactions
+);
+
+// Emergency controls
+router.post(
+  '/payments/emergency/stop-merchant/:merchantId',
+  validate(adminValidators.updateMerchantStatus),
+  (req: Request, _res: Response, next: NextFunction) => {
+    req.body = { status: 'inactive', reason: 'Emergency stop by admin' };
+    next();
+  },
+  adminController.updateMerchantStatus
+);
+
+router.post(
+  '/payments/emergency/block-card/:cardId',
+  validate(adminValidators.blockCard),
+  adminController.blockCard
 );
 
 export default router;

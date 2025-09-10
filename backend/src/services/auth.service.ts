@@ -15,6 +15,7 @@ export class AuthService {
     password: string;
     phoneNumber: string;
     fullName: string;
+    role?: 'user' | 'merchant' | 'admin';
   }): Promise<IUser> {
     // Check if user exists
     const existingUser = await User.findOne({

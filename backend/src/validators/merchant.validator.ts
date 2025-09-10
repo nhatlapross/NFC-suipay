@@ -3,29 +3,69 @@ import { body, param, query } from 'express-validator';
 export const merchantValidators = {
   getMerchant: [
     param('merchantId')
-      .isMongoId()
+      .matches(/^mch_[a-f0-9]{16}$/)
       .withMessage('Valid merchant ID is required'),
   ],
 
   registerMerchant: [
-    body('businessName')
+    body('merchantName')
       .notEmpty()
-      .withMessage('Business name is required')
+      .withMessage('Merchant name is required')
       .isLength({ min: 2, max: 100 })
-      .withMessage('Business name must be between 2 and 100 characters'),
+      .withMessage('Merchant name must be between 2 and 100 characters'),
+    body('businessType')
+      .notEmpty()
+      .withMessage('Business type is required')
+      .isLength({ min: 2, max: 50 })
+      .withMessage('Business type must be between 2 and 50 characters'),
     body('email')
       .isEmail()
       .withMessage('Valid email is required'),
-    body('phone')
-      .optional()
+    body('phoneNumber')
+      .notEmpty()
+      .withMessage('Phone number is required')
       .isMobilePhone('any')
       .withMessage('Valid phone number is required'),
-    body('businessType')
+    body('walletAddress')
       .notEmpty()
-      .withMessage('Business type is required'),
-    body('businessAddress')
+      .withMessage('Wallet address is required')
+      .matches(/^0x[a-fA-F0-9]{64}$/)
+      .withMessage('Invalid Sui wallet address format'),
+    body('address.street')
       .notEmpty()
-      .withMessage('Business address is required'),
+      .withMessage('Street address is required'),
+    body('address.city')
+      .notEmpty()
+      .withMessage('City is required'),
+    body('address.state')
+      .notEmpty()
+      .withMessage('State is required'),
+    body('address.country')
+      .notEmpty()
+      .withMessage('Country is required'),
+    body('address.postalCode')
+      .notEmpty()
+      .withMessage('Postal code is required'),
+    body('bankAccount.accountNumber')
+      .optional()
+      .isLength({ min: 8, max: 20 })
+      .withMessage('Account number must be between 8 and 20 characters'),
+    body('bankAccount.bankName')
+      .optional()
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Bank name must be between 2 and 100 characters'),
+    body('bankAccount.routingNumber')
+      .optional()
+      .isLength({ min: 9, max: 12 })
+      .withMessage('Routing number must be between 9 and 12 characters'),
+    body('webhookUrl')
+      .optional()
+      .isURL()
+      .withMessage('Valid webhook URL is required'),
+    body('settlementPeriod')
+      .optional()
+      .isIn(['daily', 'weekly', 'monthly'])
+      .withMessage('Settlement period must be daily, weekly, or monthly'),
   ],
 
   updateProfile: [

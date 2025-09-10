@@ -30,14 +30,18 @@ export async function processNFCPaymentJob(job: Job<PaymentJobData>) {
   const { transactionId, paymentData } = job.data;
   const startTime = Date.now();
   
-  logger.info(`Processing payment job ${job.id}`, { transactionId, paymentData });
+  logger.info(`🔄 Processing payment job ${job.id}`, { transactionId, paymentData });
   
   try {
+    logger.info(`✅ Job ${job.id} started processing...`);
     // 1. Get transaction record
+    logger.info(`📋 Finding transaction: ${transactionId}`);
     const transaction = await TransactionModel.findOne({ transactionId });
     if (!transaction) {
+      logger.error(`❌ Transaction not found: ${transactionId}`);
       throw new Error('Transaction not found');
     }
+    logger.info(`✅ Transaction found: ${transaction._id}`);
     
     // Update status to processing
     transaction.status = 'processing';

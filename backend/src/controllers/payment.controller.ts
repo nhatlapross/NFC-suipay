@@ -10,6 +10,8 @@ import { getSuiClient } from '../config/sui.config';
 import { paymentQueue } from '../config/queue.config';
 import { socketService } from '../services/socket.service';
 import { v4 as uuidv4 } from 'uuid';
+import { Transaction as SuiTransaction } from '@mysten/sui/transactions';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import logger from '../utils/logger';
 
 const paymentService = new PaymentService();
@@ -512,6 +514,136 @@ export class PaymentController {
       
     } catch (error) {
       logger.error('Async payment initiation error:', error);
+      next(error);
+    }
+  }
+
+  async processNFCPaymentDirect(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+    try {
+      const { cardUuid, amount, merchantId, terminalId } = req.body;
+      const user = (req as any).user;
+      
+      // Input validation
+      if (!cardUuid || !amount || !merchantId || !terminalId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields',
+          code: ERROR_CODES.VALIDATION_ERROR,
+        });
+      }
+
+      // Check if user has a wallet address
+      if (!user.walletAddress) {
+        user.walletAddress = '0xdefault_user_wallet_' + user._id;
+      }
+
+      // Find merchant by merchantId string
+      const merchant = await Merchant.findOne({ merchantId });
+      if (!merchant) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid merchant',
+          code: ERROR_CODES.VALIDATION_ERROR,
+        });
+      }
+      
+      // Generate transaction ID
+      const transactionId = uuidv4();
+      
+      // Calculate gas fee
+      const gasFee = 0.001;
+      const totalAmount = amount + gasFee;
+      
+      // Create transaction record
+      const transaction = await Transaction.create({
+        transactionId,
+        userId: user._id,
+        cardUuid,
+        txHash: 'pending_' + transactionId,
+        type: 'payment',
+        amount,
+        currency: 'SUI',
+        status: 'processing',
+        merchantId: (merchant as any)._id,
+        merchantName: merchant.merchantName,
+        terminalId,
+        fromAddress: user.walletAddress,
+        toAddress: merchant.walletAddress,
+        gasFee,
+        totalAmount,
+        metadata: {
+          ipAddress: req.ip || req.connection.remoteAddress,
+          userAgent: req.headers['user-agent'],
+          timestamp: new Date(),
+          merchantIdString: merchantId,
+          terminalId,
+        },
+      });
+
+      // Process directly (like the successful test script)
+      const userWithKey = await User.findById(user._id).select('+encryptedPrivateKey');
+      if (!userWithKey || !userWithKey.encryptedPrivateKey) {
+        throw new Error('User wallet not configured');
+      }
+
+      // Process blockchain transaction directly
+      let keypair: Ed25519Keypair;
+      if (userWithKey.encryptedPrivateKey.startsWith('suiprivkey1')) {
+        keypair = Ed25519Keypair.fromSecretKey(userWithKey.encryptedPrivateKey);
+      } else {
+        throw new Error('Private key format not supported');
+      }
+      
+      const amountInMist = Math.floor(amount * 1_000_000_000);
+      const tx = new SuiTransaction();
+      tx.setSender(user.walletAddress);
+      
+      const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(amountInMist)]);
+      tx.transferObjects([paymentCoin], tx.pure.address(merchant.walletAddress));
+      tx.setGasBudget(10000000);
+      
+      const suiClient = getSuiClient();
+      const result = await suiClient.signAndExecuteTransaction({
+        transaction: tx,
+        signer: keypair,
+        options: {
+          showEffects: true,
+          showObjectChanges: true,
+          showEvents: true,
+        },
+      });
+      
+      await suiClient.waitForTransaction({
+        digest: result.digest,
+        options: { showEffects: true },
+      });
+      
+      const actualGasFee = Number(result.effects?.gasUsed?.computationCost || 0) / 1_000_000_000;
+      
+      // Update transaction with success
+      transaction.status = 'completed';
+      transaction.txHash = result.digest;
+      transaction.gasFee = actualGasFee;
+      transaction.totalAmount = amount + actualGasFee;
+      transaction.completedAt = new Date();
+      await transaction.save();
+
+      res.json({
+        success: true,
+        message: 'Payment completed successfully',
+        transaction: {
+          transactionId,
+          txHash: result.digest,
+          amount,
+          gasFee: actualGasFee,
+          totalAmount: amount + actualGasFee,
+          status: 'completed',
+          explorerUrl: `https://suiscan.xyz/${process.env.SUI_NETWORK || 'testnet'}/tx/${result.digest}`,
+        },
+      });
+      
+    } catch (error) {
+      logger.error('Direct payment error:', error);
       next(error);
     }
   }

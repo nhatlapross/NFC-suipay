@@ -38,6 +38,13 @@ router.post(
 );
 
 router.post(
+  '/process-direct',
+  paymentLimiter,
+  validate(paymentValidators.processPayment),
+  paymentController.processNFCPaymentDirect.bind(paymentController)
+);
+
+router.post(
   '/sign',
   validate(paymentValidators.signTransaction),
   paymentController.signTransaction

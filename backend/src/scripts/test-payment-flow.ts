@@ -151,7 +151,8 @@ async function testPaymentFlow() {
 }
 
 // WebSocket monitoring (optional)
-function setupWebSocketMonitoring(transactionId: string) {
+// @ts-ignore: unused function
+function _setupWebSocketMonitoring(transactionId: string) {
   console.log('\n🔌 Setting up WebSocket monitoring for transaction:', transactionId);
   
   // This would require socket.io-client

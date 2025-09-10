@@ -26,6 +26,11 @@ export interface ITransaction extends Document {
   failureReason?: string;
   refundedAt?: Date;
   refundTxHash?: string;
+  refundAmount?: number;
+  refundReason?: string;
+  refundType?: string;
+  originalTransactionId?: mongoose.Types.ObjectId;
+  processingTime?: number;
   createdAt: Date;
   completedAt?: Date;
   updatedAt: Date;
@@ -105,6 +110,12 @@ const transactionSchema = new Schema<ITransaction>(
     failureReason: String,
     refundedAt: Date,
     refundTxHash: String,
+    refundAmount: Number,
+    refundReason: String,
+    originalTransactionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Transaction'
+    },
     completedAt: Date,
   },
   {

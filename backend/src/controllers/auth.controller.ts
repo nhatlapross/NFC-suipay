@@ -6,13 +6,14 @@ const authService = new AuthService();
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      const { email, password, phoneNumber, fullName } = req.body;
+      const { email, password, phoneNumber, fullName, role } = req.body;
       
       const result = await authService.register({
         email,
         password,
         phoneNumber,
         fullName,
+        role,
       });
       
       res.status(201).json({
