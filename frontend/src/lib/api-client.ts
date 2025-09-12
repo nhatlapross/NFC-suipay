@@ -3,7 +3,7 @@ import { PaymentRequest, PaymentResponse, Transaction } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
-const api = axios.create({
+const api: any = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
@@ -69,6 +69,10 @@ export async function resendOtpAPI(phoneNumber: string) {
   return api.post('/auth/resend-otp', { phoneNumber });
 }
 
+export async function forgotPasswordAPI(email: string) {
+  return api.post('/auth/forgot-password', { email });
+}
+
 // User APIs
 export async function getUserProfileAPI() {
   return api.get('/user/profile');
@@ -78,13 +82,22 @@ export async function updateUserProfileAPI(data: any) {
   return api.put('/user/profile', data);
 }
 
+// User Settings APIs
+export async function getUserSettingsAPI() {
+  return api.get('/user/settings');
+}
+
+export async function updateUserSettingsAPI(data: { twoFactorAuth?: boolean }) {
+  return api.put('/user/settings', data);
+}
+
 export async function setPinAPI(pin: string, confirmPin: string) {
   return api.post('/user/pin/set', { pin, confirmPin });
 }
 
 // Card APIs
 export async function createCardAPI(data: {
-  cardType: 'standard' | 'premium' | 'corporate';
+  cardType: 'virtual' | 'physical';
   cardName?: string;
   limits?: { daily: number; monthly: number };
 }) {
@@ -131,7 +144,7 @@ export async function getPaymentHistoryAPI(params?: {
   startDate?: string;
   endDate?: string;
 }) {
-  return api.get('/payment/history', { params });
+  return api.get('/payment/transactions', { params });
 }
 
 export async function refundTransactionAPI(txId: string, reason?: string) {
@@ -143,8 +156,8 @@ export async function createWalletAPI() {
   return api.post('/wallet/create');
 }
 
-export async function getWalletBalanceAPI() {
-  return api.get('/wallet/balance');
+export async function getWalletBalanceAPI(address: string) {
+  return api.get(`/wallet/balance/${address}`);
 }
 
 export async function getWalletTransactionsAPI(params?: {
@@ -156,6 +169,15 @@ export async function getWalletTransactionsAPI(params?: {
 
 export async function requestFaucetAPI() {
   return api.post('/wallet/faucet');
+}
+
+// User limits APIs
+export async function getUserLimitsAPI() {
+  return api.get('/user/limits');
+}
+
+export async function updateUserLimitsAPI(data: { dailyLimit?: number; monthlyLimit?: number }) {
+  return api.put('/user/limits', data);
 }
 
 // Merchant APIs (if user is merchant)

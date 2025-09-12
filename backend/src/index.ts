@@ -124,6 +124,7 @@ app.get('/health', (_req:any, res:any) => {
 // API Routes
 app.use('/api', routes);
 app.use('/api/fast-payment', fastPaymentRoutes);
+// Merchant tap-to-pay direct processing endpoints (API key based)
 
 // Static files
 app.use('/uploads', express.static('uploads'));

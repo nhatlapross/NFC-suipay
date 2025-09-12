@@ -6,6 +6,21 @@ First, run the development server:
 
 ```bash
 npm run dev
+## Test Accounts (Local)
+
+- Admin
+  - Email: `admin2@nfcpayment.com`
+  - Password: `P@ssw0rd123`
+  - Redirects to `/admin` after login
+
+- User
+  - Email: `testuser+1@example.com`
+  - Password: `P@ssw0rd123`
+  - Redirects to `/`
+
+Notes:
+- Visiting `/auth` is allowed even when logged-in.
+- To force admin signup in dev, backend must set `ALLOW_ADMIN_SIGNUP=true`.
 # or
 yarn dev
 # or
