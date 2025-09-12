@@ -97,7 +97,7 @@ export async function setPinAPI(pin: string, confirmPin: string) {
 
 // Card APIs
 export async function createCardAPI(data: {
-  cardType: 'standard' | 'premium' | 'corporate';
+  cardType: 'virtual' | 'physical';
   cardName?: string;
   limits?: { daily: number; monthly: number };
 }) {
@@ -144,7 +144,7 @@ export async function getPaymentHistoryAPI(params?: {
   startDate?: string;
   endDate?: string;
 }) {
-  return api.get('/payment/history', { params });
+  return api.get('/payment/transactions', { params });
 }
 
 export async function refundTransactionAPI(txId: string, reason?: string) {
