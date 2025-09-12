@@ -1,109 +1,92 @@
-import { Router } from 'express';
-import { merchantController } from '../controllers/merchant.controller';
-import { authenticate, authorize } from '../middleware/auth.middleware';
-import { authenticateMerchant } from '../middleware/merchantAuth.middleware';
-import { validate } from '../middleware/validation.middleware';
-import { merchantValidators } from '../validators/merchant.validator';
+import { Router } from "express";
+import { merchantController } from "../controllers/merchant.controller";
+import { authenticate, authorize } from "../middleware/auth.middleware";
+import { authenticateMerchant } from "../middleware/merchantAuth.middleware";
+import { validate } from "../middleware/validation.middleware";
+import { merchantValidators } from "../validators/merchant.validator";
 
 const router = Router();
 
 // Public routes
 router.get(
-  '/public/:merchantId',
-  validate(merchantValidators.getMerchant),
-  merchantController.getPublicMerchantInfo
+    "/public/:merchantId",
+    validate(merchantValidators.getMerchant),
+    merchantController.getPublicMerchantInfo
 );
 
 router.post(
-  '/register',
-  validate(merchantValidators.registerMerchant),
-  merchantController.registerMerchant
+    "/register",
+    authenticate,
+    authorize("merchant"),
+    validate(merchantValidators.registerMerchant),
+    merchantController.registerMerchant
 );
 
-
-// Authentication required for all other routes  
+// Authentication required for all other routes
 router.use(authenticateMerchant);
 
-router.get(
-  '/profile',
-  merchantController.getMerchantProfile
-);
+router.get("/profile", merchantController.getMerchantProfile);
 
 router.put(
-  '/profile',
-  validate(merchantValidators.updateProfile),
-  merchantController.updateMerchantProfile
+    "/profile",
+    validate(merchantValidators.updateProfile),
+    merchantController.updateMerchantProfile
 );
 
 // Merchant payments
-router.get(
-  '/payments',
-  merchantController.getMerchantPayments
-);
+router.get("/payments", merchantController.getMerchantPayments);
 
-router.get(
-  '/payments/stats',
-  merchantController.getMerchantPaymentStats
-);
+router.get("/payments/stats", merchantController.getMerchantPaymentStats);
 
 router.post(
-  '/payments/refund/:paymentId',
-  validate(merchantValidators.refundPayment),
-  merchantController.refundPayment
+    "/payments/refund/:paymentId",
+    validate(merchantValidators.refundPayment),
+    merchantController.refundPayment
 );
 
 // Merchant settings
-router.get(
-  '/settings',
-  merchantController.getMerchantSettings
-);
+router.get("/settings", merchantController.getMerchantSettings);
 
 router.put(
-  '/settings',
-  validate(merchantValidators.updateSettings),
-  merchantController.updateMerchantSettings
+    "/settings",
+    validate(merchantValidators.updateSettings),
+    merchantController.updateMerchantSettings
 );
 
 // Webhook management
-router.get(
-  '/webhooks',
-  merchantController.getWebhooks
-);
+router.get("/webhooks", merchantController.getWebhooks);
 
 router.post(
-  '/webhooks',
-  validate(merchantValidators.createWebhook),
-  merchantController.createWebhook
+    "/webhooks",
+    validate(merchantValidators.createWebhook),
+    merchantController.createWebhook
 );
 
 router.put(
-  '/webhooks/:webhookId',
-  validate(merchantValidators.updateWebhook),
-  merchantController.updateWebhook
+    "/webhooks/:webhookId",
+    validate(merchantValidators.updateWebhook),
+    merchantController.updateWebhook
 );
 
 router.delete(
-  '/webhooks/:webhookId',
-  validate(merchantValidators.deleteWebhook),
-  merchantController.deleteWebhook
+    "/webhooks/:webhookId",
+    validate(merchantValidators.deleteWebhook),
+    merchantController.deleteWebhook
 );
 
 // API Keys management
-router.get(
-  '/api-keys',
-  merchantController.getApiKeys
-);
+router.get("/api-keys", merchantController.getApiKeys);
 
 router.post(
-  '/api-keys',
-  validate(merchantValidators.createApiKey),
-  merchantController.createApiKey
+    "/api-keys",
+    validate(merchantValidators.createApiKey),
+    merchantController.createApiKey
 );
 
 router.delete(
-  '/api-keys/:keyId',
-  validate(merchantValidators.deleteApiKey),
-  merchantController.deleteApiKey
+    "/api-keys/:keyId",
+    validate(merchantValidators.deleteApiKey),
+    merchantController.deleteApiKey
 );
 
 // Admin routes (use JWT authentication)
@@ -111,23 +94,23 @@ const adminRouter = Router();
 adminRouter.use(authenticate); // JWT authentication for admin routes
 
 adminRouter.get(
-  '/admin/all',
-  authorize('admin'),
-  merchantController.getAllMerchants
+    "/admin/all",
+    authorize("admin"),
+    merchantController.getAllMerchants
 );
 
 adminRouter.put(
-  '/admin/:merchantId/status',
-  authorize('admin'),
-  validate(merchantValidators.updateMerchantStatus),
-  merchantController.updateMerchantStatus
+    "/admin/:merchantId/status",
+    authorize("admin"),
+    validate(merchantValidators.updateMerchantStatus),
+    merchantController.updateMerchantStatus
 );
 
 adminRouter.put(
-  '/admin/:merchantId/limits',
-  authorize('admin'),
-  validate(merchantValidators.updateMerchantLimits),
-  merchantController.updateMerchantLimits
+    "/admin/:merchantId/limits",
+    authorize("admin"),
+    validate(merchantValidators.updateMerchantLimits),
+    merchantController.updateMerchantLimits
 );
 
 router.use(adminRouter);
