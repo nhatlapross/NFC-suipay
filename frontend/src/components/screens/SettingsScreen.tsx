@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Lock, Unlock, DollarSign, Shield, Smartphone } from "lucide-react";
-import { getUserSettingsAPI, updateUserSettingsAPI, getUserLimitsAPI, updateUserLimitsAPI } from "@/lib/api-client";
+import { Lock, Unlock, DollarSign, Shield, Smartphone, CreditCard } from "lucide-react";
+import { getUserSettingsAPI, updateUserSettingsAPI, getUserLimitsAPI, updateUserLimitsAPI, getUserCardsAPI, blockCardAPI, unblockCardAPI } from "@/lib/api-client";
 
 const SettingsScreen: React.FC = () => {
     const [cardLocked, setCardLocked] = useState(false);
@@ -12,6 +12,8 @@ const SettingsScreen: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
+    const [userCards, setUserCards] = useState<any[]>([]);
+    const [blockingCard, setBlockingCard] = useState(false);
 
     useEffect(() => {
         const loadSettings = async () => {
@@ -34,6 +36,34 @@ const SettingsScreen: React.FC = () => {
                         setMonthlyLimit(limits.limits.monthlyLimit ?? 0);
                     }
                 } catch {}
+                
+                // Load user cards
+                try {
+                    console.log('🔄 [SettingsScreen] Loading user cards...');
+                    const cards: any = await getUserCardsAPI();
+                    console.log('📋 [SettingsScreen] Cards response:', cards);
+                    
+                    if (cards?.success && cards?.data?.cards) {
+                        setUserCards(cards.data.cards);
+                        console.log('✅ [SettingsScreen] Cards loaded successfully:', cards.data.cards);
+                        // Set card locked state based on first card's blocked status
+                        if (cards.data.cards.length > 0) {
+                            const firstCard = cards.data.cards[0];
+                            const isBlocked = !!firstCard.blockedAt || !firstCard.isActive;
+                            setCardLocked(isBlocked);
+                            console.log('🔒 [SettingsScreen] Card status:', {
+                                cardId: firstCard.id || firstCard.cardUuid,
+                                isActive: firstCard.isActive,
+                                blockedAt: firstCard.blockedAt,
+                                isBlocked
+                            });
+                        }
+                    } else {
+                        console.log('❌ [SettingsScreen] No cards found or invalid response:', cards);
+                    }
+                } catch (err) {
+                    console.log('💥 [SettingsScreen] Error loading cards:', err);
+                }
             } catch (err: any) {
                 setError(err?.response?.data?.error || "Failed to load settings");
             } finally {
@@ -88,6 +118,92 @@ const SettingsScreen: React.FC = () => {
         }
     };
 
+    const toggleCardBlock = async () => {
+        console.log('🚀 [SettingsScreen] toggleCardBlock function called');
+        console.log('📊 [SettingsScreen] Current state:', {
+            userCardsLength: userCards.length,
+            cardLocked,
+            blockingCard,
+            userCards: userCards
+        });
+
+        if (userCards.length === 0) {
+            console.log('❌ [SettingsScreen] No cards found to block/unblock');
+            setError("No cards found to block/unblock");
+            return;
+        }
+
+        const card = userCards[0]; // Use first card
+        console.log('🔄 [SettingsScreen] Toggle card block:', {
+            cardId: card.id || card.cardUuid,
+            currentStatus: cardLocked ? 'BLOCKED' : 'ACTIVE',
+            action: cardLocked ? 'UNBLOCK' : 'BLOCK',
+            timestamp: new Date().toISOString()
+        });
+
+        setBlockingCard(true);
+        setError("");
+        setMessage("");
+        
+        try {
+            if (cardLocked) {
+                // Unblock card
+                console.log('🔓 [SettingsScreen] Unblocking card...', { cardId: card.id || card.cardUuid });
+                const resp: any = await unblockCardAPI(card.id || card.cardUuid);
+                console.log('🔓 [SettingsScreen] Unblock response:', resp);
+                
+                if (resp?.success) {
+                    setCardLocked(false);
+                    setMessage("Card unblocked successfully");
+                    console.log('✅ [SettingsScreen] Card unblocked successfully');
+                    
+                    // Refresh cards
+                    console.log('🔄 [SettingsScreen] Refreshing cards after unblock...');
+                    const cards: any = await getUserCardsAPI();
+                    if (cards?.success && cards?.data?.cards) {
+                        console.log('📋 [SettingsScreen] Cards refreshed:', cards.data.cards);
+                        setUserCards(cards.data.cards);
+                    }
+                    
+                    // Dispatch event to notify other components
+                    window.dispatchEvent(new CustomEvent('cardUnblocked'));
+                } else {
+                    console.log('❌ [SettingsScreen] Unblock failed:', resp);
+                }
+            } else {
+                // Block card
+                console.log('🔒 [SettingsScreen] Blocking card...', { cardId: card.id || card.cardUuid });
+                const resp: any = await blockCardAPI(card.id || card.cardUuid, "User requested block");
+                console.log('🔒 [SettingsScreen] Block response:', resp);
+                
+                if (resp?.success) {
+                    setCardLocked(true);
+                    setMessage("Card blocked successfully");
+                    console.log('✅ [SettingsScreen] Card blocked successfully');
+                    
+                    // Refresh cards
+                    console.log('🔄 [SettingsScreen] Refreshing cards after block...');
+                    const cards: any = await getUserCardsAPI();
+                    if (cards?.success && cards?.data?.cards) {
+                        console.log('📋 [SettingsScreen] Cards refreshed:', cards.data.cards);
+                        setUserCards(cards.data.cards);
+                    }
+                    
+                    // Dispatch event to notify other components
+                    window.dispatchEvent(new CustomEvent('cardBlocked'));
+                } else {
+                    console.log('❌ [SettingsScreen] Block failed:', resp);
+                }
+            }
+        } catch (err: any) {
+            console.log('💥 [SettingsScreen] Toggle card block error:', err);
+            setError(err?.response?.data?.error || "Failed to update card status");
+        } finally {
+            setBlockingCard(false);
+            console.log('🏁 [SettingsScreen] Toggle card block completed');
+        }
+    };
+
     return (
         <div className="p-6 space-y-6">
             {/* Header */}
@@ -114,7 +230,7 @@ const SettingsScreen: React.FC = () => {
                 </div>
             )}
 
-            {/* Card Control (local only demo) */}
+            {/* Card Control */}
             <div className="bg-neo-white border-4 border-neo-black shadow-brutal p-6">
                 <div className="flex items-center gap-4 mb-4">
                     <div className="bg-neo-pink p-3 border-2 border-neo-black">
@@ -129,20 +245,50 @@ const SettingsScreen: React.FC = () => {
                             CARD CONTROL
                         </h3>
                         <p className="font-mono text-xs text-neo-black opacity-70">
-                            Lock or unlock your card instantly
+                            Block or unblock your card instantly
                         </p>
                     </div>
                 </div>
 
+                {userCards.length > 0 && (
+                    <div className="mb-4 p-3 bg-neo-cyan border-2 border-neo-black">
+                        <div className="flex items-center gap-2 mb-2">
+                            <CreditCard size={16} className="text-neo-black" />
+                            <span className="font-mono font-bold text-sm text-neo-black">
+                                CARD: {userCards[0].cardUuid || userCards[0].id}
+                            </span>
+                        </div>
+                        <div className="font-mono text-xs text-neo-black opacity-70">
+                            Status: {cardLocked ? "BLOCKED" : "ACTIVE"}
+                        </div>
+                    </div>
+                )}
+
                 <button
-                    onClick={() => setCardLocked(!cardLocked)}
+                    onClick={() => {
+                        console.log('🖱️ [SettingsScreen] Button clicked:', {
+                            userCardsLength: userCards.length,
+                            cardLocked,
+                            blockingCard,
+                            disabled: blockingCard || userCards.length === 0
+                        });
+                        console.log('🖱️ [SettingsScreen] Button is disabled?', blockingCard || userCards.length === 0);
+                        if (!(blockingCard || userCards.length === 0)) {
+                            toggleCardBlock();
+                        } else {
+                            console.log('❌ [SettingsScreen] Button is disabled, not calling toggleCardBlock');
+                        }
+                    }}
+                    disabled={blockingCard || userCards.length === 0}
                     className={`w-full py-4 font-mono font-bold text-lg border-4 border-neo-black shadow-brutal hover:shadow-brutal-lg transition-shadow ${
-                        cardLocked
+                        blockingCard
+                            ? "bg-gray-300 text-gray-600"
+                            : cardLocked
                             ? "bg-neo-cyan text-neo-black"
                             : "bg-neo-pink text-neo-white"
                     }`}
                 >
-                    {cardLocked ? "UNLOCK CARD" : "LOCK CARD"}
+                    {blockingCard ? "PROCESSING..." : cardLocked ? "UNBLOCK CARD" : "BLOCK CARD"}
                 </button>
             </div>
 

@@ -14,29 +14,59 @@ export default function Home() {
     const [creating, setCreating] = useState(false);
     const [cardInfo, setCardInfo] = useState<any | null>(null);
 
+    const loadCards = async () => {
+        try {
+            console.log('🔄 [Home] Fetching user cards...');
+            const res: any = await getUserCardsAPI();
+            const list = res?.cards || res?.data?.cards || res?.data || [];
+            const has = Array.isArray(list) && list.length > 0;
+            setHasCard(has);
+            if (has) {
+                console.log('📋 [Home] Cards fetched:', list);
+                console.log('📋 [Home] First card details:', {
+                    id: list[0].id,
+                    cardUuid: list[0].cardUuid,
+                    isActive: list[0].isActive,
+                    blockedAt: list[0].blockedAt,
+                    blockedReason: list[0].blockedReason,
+                    cardType: list[0].cardType
+                });
+                setCardInfo(list[0]);
+            } else {
+                console.log('❌ [Home] No cards found');
+            }
+        } catch {
+            console.error('💥 [Home] Failed to fetch cards');
+            setHasCard(false);
+        }
+    };
+
     useEffect(() => {
         let mounted = true;
         (async () => {
-            try {
-                console.log('[Home] Fetching user cards...');
-                const res: any = await getUserCardsAPI();
-                if (!mounted) return;
-                const list = res?.cards || res?.data?.cards || res?.data || [];
-                const has = Array.isArray(list) && list.length > 0;
-                setHasCard(has);
-                if (has) {
-                    console.log('[Home] Cards fetched:', list);
-                    setCardInfo(list[0]);
-                } else {
-                    console.log('[Home] No cards found');
-                }
-            } catch {
-                console.error('[Home] Failed to fetch cards');
-                setHasCard(false);
+            if (mounted) {
+                await loadCards();
             }
         })();
         return () => {
             mounted = false;
+        };
+    }, []);
+
+    // Listen for card changes from other components
+    useEffect(() => {
+        const handleCardChange = () => {
+            console.log('🔄 [Home] Card change detected, refreshing...');
+            loadCards();
+        };
+
+        // Listen for custom events
+        window.addEventListener('cardBlocked', handleCardChange);
+        window.addEventListener('cardUnblocked', handleCardChange);
+
+        return () => {
+            window.removeEventListener('cardBlocked', handleCardChange);
+            window.removeEventListener('cardUnblocked', handleCardChange);
         };
     }, []);
 

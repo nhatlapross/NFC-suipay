@@ -59,7 +59,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                 <div className="bg-neo-black text-neo-white p-3 font-mono text-xs">
                     <div>ADDRESS: <span className="break-all">{address || '—'}</span></div>
                     {card && (
-                        <div>STATUS: {card.isActive ? 'ACTIVE' : 'INACTIVE'}</div>
+                        <div>STATUS: {card.blockedAt ? 'BLOCKED' : card.isActive ? 'ACTIVE' : 'INACTIVE'}</div>
                     )}
                 </div>
             </div>
@@ -70,7 +70,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                     <div className="border-4 border-neo-black shadow-brutal bg-neo-white p-4">
                         <div className="flex items-center justify-between mb-2">
                             <p className="font-mono text-xs font-bold text-neo-black">YOUR NFC CARD</p>
-                            <span className={`font-mono text-xs ${card.isActive ? 'text-neo-cyan' : 'text-neo-pink'}`}>{card.isActive ? 'ACTIVE' : 'INACTIVE'}</span>
+                            <span className={`font-mono text-xs ${
+                                card.blockedAt ? 'text-red-600' : 
+                                card.isActive ? 'text-neo-cyan' : 'text-neo-pink'
+                            }`}>
+                                {card.blockedAt ? 'BLOCKED' : card.isActive ? 'ACTIVE' : 'INACTIVE'}
+                            </span>
                         </div>
                         <div className="font-mono text-sm">
                             <div>TYPE: <span className="font-bold">{card.cardType || '—'}</span></div>

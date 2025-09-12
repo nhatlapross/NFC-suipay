@@ -117,11 +117,17 @@ export async function activateCardAPI(cardId: string) {
 }
 
 export async function blockCardAPI(cardId: string, reason?: string) {
-  return api.post(`/card/${cardId}/block`, { reason });
+  console.log('🔒 [API] Block card request:', { cardId, reason });
+  const response = await api.post(`/card/${cardId}/block`, { reason });
+  console.log('🔒 [API] Block card response:', response.data);
+  return response;
 }
 
 export async function unblockCardAPI(cardId: string) {
-  return api.post(`/card/${cardId}/unblock`);
+  console.log('🔓 [API] Unblock card request:', { cardId });
+  const response = await api.post(`/card/${cardId}/unblock`);
+  console.log('🔓 [API] Unblock card response:', response.data);
+  return response;
 }
 
 export async function setPrimaryCardAPI(cardId: string) {

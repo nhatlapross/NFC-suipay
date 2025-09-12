@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { cardService } from "../services/card.service";
 import { AuthRequest } from "../middleware/auth.middleware";
+import { Card } from "../models/Card.model";
 import logger from "../utils/logger";
 
 export class CardController {
@@ -161,31 +162,167 @@ export class CardController {
     }
 
     async blockCard(
-        _req: Request,
+        req: AuthRequest,
         res: Response,
         next: NextFunction
     ): Promise<void | Response> {
         try {
+            const { cardId } = req.params;
+            const { reason } = req.body;
+            const userId = req.user?._id;
+
+            console.log('🔒 [CardController] Block card request:', {
+                cardId,
+                reason,
+                userId,
+                timestamp: new Date().toISOString()
+            });
+
+            if (!userId) {
+                console.log('❌ [CardController] Block card failed: No user ID');
+                return res.status(401).json({
+                    success: false,
+                    error: "Authentication required",
+                });
+            }
+
+            // Find card belonging to user
+            const card = await Card.findOne({
+                $or: [{ _id: cardId }, { cardUuid: cardId }],
+                userId,
+            });
+
+            if (!card) {
+                console.log('❌ [CardController] Block card failed: Card not found', { cardId, userId });
+                return res.status(404).json({
+                    success: false,
+                    error: "Card not found",
+                });
+            }
+
+            console.log('📋 [CardController] Found card to block:', {
+                cardId: card.cardUuid,
+                currentStatus: card.isActive,
+                currentBlockedAt: card.blockedAt,
+                userId: card.userId
+            });
+
+            // Block the card
+            card.isActive = false;
+            card.blockedAt = new Date();
+            card.blockedReason = reason || "User requested block";
+            if (!card.metadata) card.metadata = {};
+            card.metadata.blockedBy = userId;
+            await card.save();
+
+            console.log('✅ [CardController] Card blocked successfully:', {
+                cardId: card.cardUuid,
+                isActive: card.isActive,
+                blockedAt: card.blockedAt,
+                blockedReason: card.blockedReason,
+                userId
+            });
+
+            logger.info("Card blocked by user", {
+                cardId: card.cardUuid,
+                userId,
+                reason: card.blockedReason,
+            });
+
             res.json({
                 success: true,
-                message: "Card controller method not implemented yet",
+                message: "Card blocked successfully",
+                data: {
+                    cardId: card.cardUuid,
+                    isActive: card.isActive,
+                    blockedAt: card.blockedAt,
+                    blockedReason: card.blockedReason,
+                },
             });
         } catch (error) {
+            console.log('💥 [CardController] Block card error:', error);
+            logger.error("Error blocking card:", error);
             next(error);
         }
     }
 
     async unblockCard(
-        _req: Request,
+        req: AuthRequest,
         res: Response,
         next: NextFunction
     ): Promise<void | Response> {
         try {
+            const { cardId } = req.params;
+            const userId = req.user?._id;
+
+            console.log('🔓 [CardController] Unblock card request:', {
+                cardId,
+                userId,
+                timestamp: new Date().toISOString()
+            });
+
+            if (!userId) {
+                console.log('❌ [CardController] Unblock card failed: No user ID');
+                return res.status(401).json({
+                    success: false,
+                    error: "Authentication required",
+                });
+            }
+
+            // Find card belonging to user
+            const card = await Card.findOne({
+                $or: [{ _id: cardId }, { cardUuid: cardId }],
+                userId,
+            });
+
+            if (!card) {
+                console.log('❌ [CardController] Unblock card failed: Card not found', { cardId, userId });
+                return res.status(404).json({
+                    success: false,
+                    error: "Card not found",
+                });
+            }
+
+            console.log('📋 [CardController] Found card to unblock:', {
+                cardId: card.cardUuid,
+                currentStatus: card.isActive,
+                currentBlockedAt: card.blockedAt,
+                userId: card.userId
+            });
+
+            // Unblock the card
+            card.isActive = true;
+            card.blockedAt = undefined;
+            card.blockedReason = undefined;
+            if (!card.metadata) card.metadata = {};
+            card.metadata.unblockedBy = userId;
+            card.metadata.unblockedAt = new Date();
+            await card.save();
+
+            console.log('✅ [CardController] Card unblocked successfully:', {
+                cardId: card.cardUuid,
+                isActive: card.isActive,
+                unblockedAt: card.metadata.unblockedAt,
+                userId
+            });
+
+            logger.info("Card unblocked by user", {
+                cardId: card.cardUuid,
+                userId,
+            });
+
             res.json({
                 success: true,
-                message: "Card controller method not implemented yet",
+                message: "Card unblocked successfully",
+                data: {
+                    cardId: card.cardUuid,
+                    isActive: card.isActive,
+                    unblockedAt: card.metadata.unblockedAt,
+                },
             });
         } catch (error) {
+            console.log('💥 [CardController] Unblock card error:', error);
+            logger.error("Error unblocking card:", error);
             next(error);
         }
     }

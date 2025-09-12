@@ -48,7 +48,16 @@ export const cardValidators = {
     ],
 
     blockCard: [
-        param("cardId").isUUID().withMessage("Valid card UUID is required"),
+        param("cardId")
+            .custom((value) => {
+                // Accept both UUID and MongoDB ObjectId
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const objectIdRegex = /^[0-9a-f]{24}$/i;
+                if (uuidRegex.test(value) || objectIdRegex.test(value)) {
+                    return true;
+                }
+                throw new Error("Valid card ID (UUID or ObjectId) is required");
+            }),
         body("reason")
             .optional()
             .isLength({ max: 255 })
@@ -139,7 +148,16 @@ export const cardValidators = {
     ],
 
     unblockCard: [
-        param("cardId").isUUID().withMessage("Valid card UUID is required"),
+        param("cardId")
+            .custom((value) => {
+                // Accept both UUID and MongoDB ObjectId
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const objectIdRegex = /^[0-9a-f]{24}$/i;
+                if (uuidRegex.test(value) || objectIdRegex.test(value)) {
+                    return true;
+                }
+                throw new Error("Valid card ID (UUID or ObjectId) is required");
+            }),
     ],
 
     setPrimary: [

@@ -27,6 +27,8 @@ export interface CardResponse {
     expiryDate: Date;
     usageCount: number;
     lastUsed?: Date;
+    blockedAt?: Date;
+    blockedReason?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -273,6 +275,8 @@ export class CardService {
             expiryDate: card.expiryDate,
             usageCount: card.usageCount,
             lastUsed: card.lastUsed,
+            blockedAt: card.blockedAt,
+            blockedReason: card.blockedReason,
             createdAt: card.createdAt,
             updatedAt: card.updatedAt,
         };
