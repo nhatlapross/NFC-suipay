@@ -231,7 +231,7 @@ export class PaymentService {
 
   async getTransactionById(txId: string): Promise<ITransaction | null> {
     // Check cache
-    const cached = await getCached<ITransaction>(`tx:${txId}`);
+    const cached = await getCached(`tx:${txId}`);
     if (cached) return cached;
     
     const transaction = await TransactionModel.findById(txId)

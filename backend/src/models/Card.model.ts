@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ICard extends Document {
   cardUuid: string;
   userId: mongoose.Types.ObjectId;
-  cardType: 'standard' | 'premium' | 'corporate';
+  cardType: 'standard' | 'premium' | 'corporate' | 'virtual' | 'physical' | 'test';
   cardNumber: string;
   isActive: boolean;
   isPrimary: boolean;
@@ -13,6 +13,9 @@ export interface ICard extends Document {
   usageCount: number;
   dailySpent: number;
   monthlySpent: number;
+  dailyLimit: number;
+  monthlyLimit: number;
+  singleTransactionLimit: number;
   lastResetDate: Date;
   blockedAt?: Date;
   blockedReason?: string;
@@ -39,7 +42,7 @@ const cardSchema = new Schema<ICard>(
     },
     cardType: {
       type: String,
-      enum: ['standard', 'premium', 'corporate'],
+      enum: ['standard', 'premium', 'corporate', 'virtual', 'physical', 'test'],
       default: 'standard',
     },
     cardNumber: {
@@ -76,6 +79,18 @@ const cardSchema = new Schema<ICard>(
     monthlySpent: {
       type: Number,
       default: 0,
+    },
+    dailyLimit: {
+      type: Number,
+      default: 2000000, // 2M VND equivalent (about 2 SUI)
+    },
+    monthlyLimit: {
+      type: Number,
+      default: 50000000, // 50M VND equivalent (about 50 SUI)
+    },
+    singleTransactionLimit: {
+      type: Number,
+      default: 500000, // 500K VND equivalent (about 0.5 SUI)
     },
     lastResetDate: {
       type: Date,

@@ -1,0 +1,832 @@
+import { Transaction as TransactionModel } from "../models/Transaction.model";
+import { User } from "../models/User.model";
+import { Merchant } from "../models/Merchant.model";
+import { Card } from "../models/Card.model";
+import logger from "../utils/logger";
+
+export interface PaymentDashboardStats {
+    totalTransactions: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    totalVolume: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    successRate: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    failureAnalysis: {
+        networkErrors: number;
+        cardErrors: number;
+        insufficientFunds: number;
+        merchantErrors: number;
+        systemErrors: number;
+    };
+    activeCards: number;
+    activeMerchants: number;
+    averageTransactionTime: number;
+}
+
+export interface TransactionFilter {
+    status?: string;
+    merchantId?: string;
+    userId?: string;
+    cardId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    minAmount?: number;
+    maxAmount?: number;
+    paymentMethod?: string;
+}
+
+export class AdminService {
+    // === USER MANAGEMENT ===
+    async getUsers(filters: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        role?: string;
+        kycStatus?: string;
+    }) {
+        try {
+            const page = filters.page || 1;
+            const limit = Math.min(filters.limit || 20, 100);
+            const skip = (page - 1) * limit;
+
+            // Build query filters
+            const query: any = {};
+            if (filters.status) {
+                query.status = filters.status;
+            }
+            if (filters.role) {
+                query.role = filters.role;
+            }
+            if (filters.kycStatus) {
+                query.kycStatus = filters.kycStatus;
+            }
+
+            // Get users with pagination
+            const [users, total] = await Promise.all([
+                User.find(query)
+                    .select(
+                        "-password -encryptedPrivateKey -twoFactorSecret -pinHash -refreshToken"
+                    )
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .lean(),
+                User.countDocuments(query),
+            ]);
+
+            // Get transaction statistics for each user
+            const usersWithStats = await Promise.all(
+                users.map(async (user) => {
+                    const [transactionCount, totalVolume] = await Promise.all([
+                        TransactionModel.countDocuments({
+                            userId: user._id,
+                            status: "completed",
+                        }),
+                        TransactionModel.aggregate([
+                            {
+                                $match: {
+                                    userId: user._id,
+                                    status: "completed",
+                                },
+                            },
+                            {
+                                $group: {
+                                    _id: null,
+                                    total: { $sum: "$amount" },
+                                },
+                            },
+                        ]),
+                    ]);
+
+                    return {
+                        id: user._id,
+                        email: user.email,
+                        fullName: user.fullName,
+                        phoneNumber: user.phoneNumber,
+                        status: user.status,
+                        kycStatus: user.kycStatus,
+                        role: user.role,
+                        dailyLimit: user.dailyLimit,
+                        monthlyLimit: user.monthlyLimit,
+                        lastLogin: user.lastLogin,
+                        createdAt: user.createdAt,
+                        transactionCount,
+                        totalVolume: totalVolume[0]?.total || 0,
+                    };
+                })
+            );
+
+            return {
+                users: usersWithStats,
+                pagination: {
+                    total,
+                    pages: Math.ceil(total / limit),
+                    currentPage: page,
+                    limit,
+                },
+            };
+        } catch (error) {
+            logger.error("Error getting users:", error);
+            throw error;
+        }
+    }
+
+    // === PAYMENT MONITORING DASHBOARD ===
+    async getPaymentDashboard(): Promise<PaymentDashboardStats> {
+        try {
+            const now = new Date();
+            const today = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate()
+            );
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+            // Get transaction counts and volumes
+            const [todayStats, weekStats, monthStats] = await Promise.all([
+                this.getTransactionStats(today, now),
+                this.getTransactionStats(weekAgo, now),
+                this.getTransactionStats(monthAgo, now),
+            ]);
+
+            // Get failure analysis for last 7 days
+            const failureAnalysis = await this.getFailureAnalysis(weekAgo, now);
+
+            // Get system metrics
+            const [activeCards, activeMerchants, avgTransactionTime] =
+                await Promise.all([
+                    Card.countDocuments({ isActive: true }),
+                    Merchant.countDocuments({ isActive: true }),
+                    this.getAverageTransactionTime(),
+                ]);
+
+            return {
+                totalTransactions: {
+                    today: todayStats.count,
+                    week: weekStats.count,
+                    month: monthStats.count,
+                },
+                totalVolume: {
+                    today: todayStats.volume,
+                    week: weekStats.volume,
+                    month: monthStats.volume,
+                },
+                successRate: {
+                    today: todayStats.successRate,
+                    week: weekStats.successRate,
+                    month: monthStats.successRate,
+                },
+                failureAnalysis,
+                activeCards,
+                activeMerchants,
+                averageTransactionTime: avgTransactionTime,
+            };
+        } catch (error) {
+            logger.error("Error getting payment dashboard:", error);
+            throw error;
+        }
+    }
+
+    private async getTransactionStats(startDate: Date, endDate: Date) {
+        const [totalStats, successStats] = await Promise.all([
+            TransactionModel.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: startDate, $lte: endDate },
+                        type: { $in: ["payment", "nfc_payment"] },
+                    },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        count: { $sum: 1 },
+                        volume: { $sum: "$amount" },
+                    },
+                },
+            ]),
+            TransactionModel.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: startDate, $lte: endDate },
+                        type: { $in: ["payment", "nfc_payment"] },
+                        status: "completed",
+                    },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        count: { $sum: 1 },
+                    },
+                },
+            ]),
+        ]);
+
+        const total = totalStats[0] || { count: 0, volume: 0 };
+        const success = successStats[0] || { count: 0 };
+        const successRate =
+            total.count > 0 ? (success.count / total.count) * 100 : 0;
+
+        return {
+            count: total.count,
+            volume: total.volume,
+            successRate: Math.round(successRate * 100) / 100,
+        };
+    }
+
+    private async getFailureAnalysis(startDate: Date, endDate: Date) {
+        const failures = await TransactionModel.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: startDate, $lte: endDate },
+                    status: "failed",
+                },
+            },
+            {
+                $group: {
+                    _id: "$failureReason",
+                    count: { $sum: 1 },
+                },
+            },
+        ]);
+
+        const analysis = {
+            networkErrors: 0,
+            cardErrors: 0,
+            insufficientFunds: 0,
+            merchantErrors: 0,
+            systemErrors: 0,
+        };
+
+        failures.forEach((failure) => {
+            const reason = failure._id?.toLowerCase() || "";
+            if (reason.includes("network") || reason.includes("timeout")) {
+                analysis.networkErrors += failure.count;
+            } else if (reason.includes("card") || reason.includes("nfc")) {
+                analysis.cardErrors += failure.count;
+            } else if (
+                reason.includes("insufficient") ||
+                reason.includes("balance")
+            ) {
+                analysis.insufficientFunds += failure.count;
+            } else if (reason.includes("merchant")) {
+                analysis.merchantErrors += failure.count;
+            } else {
+                analysis.systemErrors += failure.count;
+            }
+        });
+
+        return analysis;
+    }
+
+    private async getAverageTransactionTime(): Promise<number> {
+        const result = await TransactionModel.aggregate([
+            {
+                $match: {
+                    status: "completed",
+                    processingTime: { $exists: true, $gt: 0 },
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    avgTime: { $avg: "$processingTime" },
+                },
+            },
+        ]);
+
+        return result[0]?.avgTime || 0;
+    }
+
+    // === TRANSACTION MANAGEMENT ===
+    async getTransactions(
+        filter: TransactionFilter,
+        page: number = 1,
+        limit: number = 20
+    ) {
+        try {
+            const query: any = {};
+
+            if (filter.status) query.status = filter.status;
+            if (filter.merchantId) query.merchantId = filter.merchantId;
+            if (filter.userId) query.userId = filter.userId;
+            if (filter.cardId) query.cardId = filter.cardId;
+
+            if (filter.startDate || filter.endDate) {
+                query.createdAt = {};
+                if (filter.startDate) query.createdAt.$gte = filter.startDate;
+                if (filter.endDate) query.createdAt.$lte = filter.endDate;
+            }
+
+            if (filter.minAmount || filter.maxAmount) {
+                query.amount = {};
+                if (filter.minAmount) query.amount.$gte = filter.minAmount;
+                if (filter.maxAmount) query.amount.$lte = filter.maxAmount;
+            }
+
+            if (filter.paymentMethod)
+                query.paymentMethod = filter.paymentMethod;
+
+            const skip = (page - 1) * limit;
+
+            const [transactions, total] = await Promise.all([
+                TransactionModel.find(query)
+                    .populate("userId", "fullName email")
+                    .populate("merchantId", "merchantName businessType")
+                    .populate("cardId", "cardType lastFourDigits")
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .lean(),
+                TransactionModel.countDocuments(query),
+            ]);
+
+            return {
+                transactions,
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: page,
+            };
+        } catch (error) {
+            logger.error("Error getting transactions:", error);
+            throw error;
+        }
+    }
+
+    async getTransactionById(transactionId: string) {
+        try {
+            const transaction = await TransactionModel.findById(transactionId)
+                .populate("userId", "fullName email phoneNumber")
+                .populate("merchantId", "merchantName businessType email")
+                .populate("cardId", "cardType cardNumber isActive")
+                .lean();
+
+            if (!transaction) {
+                throw new Error("Transaction not found");
+            }
+
+            return transaction;
+        } catch (error) {
+            logger.error("Error getting transaction by ID:", error);
+            throw error;
+        }
+    }
+
+    async forceRefundTransaction(
+        transactionId: string,
+        reason: string,
+        adminId: string
+    ) {
+        try {
+            const transaction = await TransactionModel.findById(transactionId);
+            if (!transaction) {
+                throw new Error("Transaction not found");
+            }
+
+            if (transaction.status !== "completed") {
+                throw new Error("Can only refund completed transactions");
+            }
+
+            if (transaction.refundedAt) {
+                throw new Error("Transaction already refunded");
+            }
+
+            // Create refund transaction
+            const refundTransaction = await TransactionModel.create({
+                userId: transaction.userId,
+                cardId: transaction.cardId,
+                cardUuid: transaction.cardUuid,
+                type: "admin_refund",
+                amount: transaction.amount,
+                currency: transaction.currency,
+                merchantId: transaction.merchantId,
+                status: "completed",
+                fromAddress: transaction.toAddress,
+                toAddress: transaction.fromAddress,
+                originalTransactionId: transaction._id,
+                metadata: {
+                    reason,
+                    refundType: "admin_forced",
+                    adminId,
+                    originalTransactionId: transaction._id,
+                },
+            });
+
+            // Update original transaction
+            transaction.refundedAt = new Date();
+            transaction.refundAmount = transaction.amount;
+            transaction.refundReason = reason;
+            transaction.refundType = "admin_forced";
+            await transaction.save();
+
+            logger.info("Admin forced refund completed", {
+                transactionId,
+                refundTransactionId: refundTransaction._id,
+                amount: transaction.amount,
+                reason,
+                adminId,
+            });
+
+            return {
+                originalTransaction: transaction,
+                refundTransaction,
+                refundAmount: transaction.amount,
+            };
+        } catch (error) {
+            logger.error("Error processing admin refund:", error);
+            throw error;
+        }
+    }
+
+    async updateTransactionStatus(
+        transactionId: string,
+        newStatus: string,
+        reason?: string,
+        adminId?: string
+    ) {
+        try {
+            const transaction = await TransactionModel.findById(transactionId);
+            if (!transaction) {
+                throw new Error("Transaction not found");
+            }
+
+            const oldStatus = transaction.status;
+            transaction.status = newStatus as
+                | "pending"
+                | "processing"
+                | "completed"
+                | "failed"
+                | "cancelled";
+
+            if (reason || adminId) {
+                transaction.metadata = {
+                    ...transaction.metadata,
+                    statusChangeReason: reason,
+                    statusChangedBy: adminId,
+                    statusChangeDate: new Date(),
+                    previousStatus: oldStatus,
+                };
+            }
+
+            await transaction.save();
+
+            logger.info("Transaction status updated by admin", {
+                transactionId,
+                oldStatus,
+                newStatus,
+                reason,
+                adminId,
+            });
+
+            return transaction;
+        } catch (error) {
+            logger.error("Error updating transaction status:", error);
+            throw error;
+        }
+    }
+
+    // === NFC CARD MONITORING ===
+    async getCardHealthStatus() {
+        try {
+            const cardStats = await Card.aggregate([
+                {
+                    $group: {
+                        _id: "$isActive",
+                        count: { $sum: 1 },
+                    },
+                },
+            ]);
+
+            const failedTransactions = await TransactionModel.aggregate([
+                {
+                    $match: {
+                        status: "failed",
+                        failureReason: { $regex: /card|nfc/i },
+                        createdAt: {
+                            $gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                        },
+                    },
+                },
+                {
+                    $group: {
+                        _id: "$cardId",
+                        failureCount: { $sum: 1 },
+                    },
+                },
+                { $sort: { failureCount: -1 } },
+                { $limit: 10 },
+            ]);
+
+            return {
+                cardStats: cardStats.reduce(
+                    (acc, stat) => {
+                        acc[stat._id] = stat.count;
+                        return acc;
+                    },
+                    {} as Record<string, number>
+                ),
+                problematicCards: failedTransactions,
+            };
+        } catch (error) {
+            logger.error("Error getting card health status:", error);
+            throw error;
+        }
+    }
+
+    async getCardById(cardId: string) {
+        try {
+            const card = await Card.findOne({
+                $or: [{ _id: cardId }, { cardUuid: cardId }],
+            })
+                .populate("userId", "fullName email")
+                .lean();
+
+            if (!card) {
+                throw new Error("Card not found");
+            }
+
+            // Get recent transactions for this card
+            const recentTransactions = await TransactionModel.find({
+                cardId: card._id,
+            })
+                .sort({ createdAt: -1 })
+                .limit(10)
+                .populate("merchantId", "merchantName")
+                .lean();
+
+            return {
+                ...card,
+                recentTransactions,
+            };
+        } catch (error) {
+            logger.error("Error getting card by ID:", error);
+            throw error;
+        }
+    }
+
+    async blockCard(cardId: string, reason: string, adminId: string) {
+        try {
+            const card = await Card.findOne({
+                $or: [{ _id: cardId }, { cardUuid: cardId }],
+            });
+            if (!card) {
+                throw new Error("Card not found");
+            }
+
+            card.isActive = false;
+            card.blockedReason = reason;
+            card.blockedAt = new Date();
+            if (!card.metadata) card.metadata = {};
+            card.metadata.blockedBy = adminId;
+            await card.save();
+
+            logger.info("Card blocked by admin", {
+                cardId: card.cardUuid,
+                reason,
+                adminId,
+            });
+
+            return card;
+        } catch (error) {
+            logger.error("Error blocking card:", error);
+            throw error;
+        }
+    }
+
+    async unblockCard(cardId: string, adminId: string) {
+        try {
+            const card = await Card.findOne({
+                $or: [{ _id: cardId }, { cardUuid: cardId }],
+            });
+            if (!card) {
+                throw new Error("Card not found");
+            }
+
+            card.isActive = true;
+            card.blockedReason = undefined;
+            card.blockedAt = undefined;
+            if (!card.metadata) card.metadata = {};
+            card.metadata.unblockedBy = adminId;
+            card.metadata.unblockedAt = new Date();
+            await card.save();
+
+            logger.info("Card unblocked by admin", {
+                cardId: card.cardUuid,
+                adminId,
+            });
+
+            return card;
+        } catch (error) {
+            logger.error("Error unblocking card:", error);
+            throw error;
+        }
+    }
+
+    // === PAYMENT SYSTEM HEALTH ===
+    async getSystemHealthMetrics() {
+        try {
+            const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+            const [
+                transactionMetrics,
+                errorMetrics,
+                performanceMetrics,
+                systemStatus,
+            ] = await Promise.all([
+                this.getTransactionMetrics(last24Hours),
+                this.getErrorMetrics(last24Hours),
+                this.getPerformanceMetrics(last24Hours),
+                this.getSystemStatus(),
+            ]);
+
+            return {
+                transactionMetrics,
+                errorMetrics,
+                performanceMetrics,
+                systemStatus,
+                timestamp: new Date(),
+            };
+        } catch (error) {
+            logger.error("Error getting system health metrics:", error);
+            throw error;
+        }
+    }
+
+    private async getTransactionMetrics(since: Date) {
+        return await TransactionModel.aggregate([
+            { $match: { createdAt: { $gte: since } } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    successful: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "completed"] }, 1, 0],
+                        },
+                    },
+                    failed: {
+                        $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] },
+                    },
+                    pending: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "pending"] }, 1, 0],
+                        },
+                    },
+                    totalVolume: { $sum: "$amount" },
+                },
+            },
+        ]);
+    }
+
+    private async getErrorMetrics(since: Date) {
+        return await TransactionModel.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: since },
+                    status: "failed",
+                },
+            },
+            {
+                $group: {
+                    _id: "$failureReason",
+                    count: { $sum: 1 },
+                },
+            },
+            { $sort: { count: -1 } },
+        ]);
+    }
+
+    private async getPerformanceMetrics(since: Date) {
+        const result = await TransactionModel.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: since },
+                    status: "completed",
+                    processingTime: { $exists: true },
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    avgProcessingTime: { $avg: "$processingTime" },
+                    maxProcessingTime: { $max: "$processingTime" },
+                    minProcessingTime: { $min: "$processingTime" },
+                },
+            },
+        ]);
+
+        return (
+            result[0] || {
+                avgProcessingTime: 0,
+                maxProcessingTime: 0,
+                minProcessingTime: 0,
+            }
+        );
+    }
+
+    private async getSystemStatus() {
+        const [activeUsers, activeMerchants, activeCards] = await Promise.all([
+            User.countDocuments({ status: "active" }),
+            Merchant.countDocuments({ isActive: true }),
+            Card.countDocuments({ isActive: true }),
+        ]);
+
+        return {
+            activeUsers,
+            activeMerchants,
+            activeCards,
+            databaseStatus: "healthy", // This would be a real health check
+            cacheStatus: "healthy", // This would be a real health check
+            queueStatus: "healthy", // This would be a real health check
+        };
+    }
+
+    // === MERCHANT PAYMENT MONITORING ===
+    async getMerchantPaymentHealth(merchantId?: string) {
+        try {
+            const last7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const matchQuery: any = { createdAt: { $gte: last7Days } };
+
+            if (merchantId) {
+                matchQuery.merchantId = merchantId;
+            }
+
+            const merchantStats = await TransactionModel.aggregate([
+                { $match: matchQuery },
+                {
+                    $group: {
+                        _id: "$merchantId",
+                        totalTransactions: { $sum: 1 },
+                        successfulTransactions: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ["$status", "completed"] },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+                        failedTransactions: {
+                            $sum: {
+                                $cond: [{ $eq: ["$status", "failed"] }, 1, 0],
+                            },
+                        },
+                        totalVolume: { $sum: "$amount" },
+                        avgTransactionAmount: { $avg: "$amount" },
+                    },
+                },
+                {
+                    $lookup: {
+                        from: "merchants",
+                        localField: "_id",
+                        foreignField: "_id",
+                        as: "merchant",
+                    },
+                },
+                {
+                    $addFields: {
+                        successRate: {
+                            $multiply: [
+                                {
+                                    $divide: [
+                                        "$successfulTransactions",
+                                        "$totalTransactions",
+                                    ],
+                                },
+                                100,
+                            ],
+                        },
+                        merchant: { $arrayElemAt: ["$merchant", 0] },
+                    },
+                },
+                { $sort: { totalTransactions: -1 } },
+            ]);
+
+            return merchantStats.map((stat) => ({
+                merchantId: stat._id,
+                merchantName: stat.merchant?.merchantName || "Unknown",
+                totalTransactions: stat.totalTransactions,
+                successRate: Math.round(stat.successRate * 100) / 100,
+                failedTransactions: stat.failedTransactions,
+                totalVolume: stat.totalVolume,
+                avgTransactionAmount:
+                    Math.round(stat.avgTransactionAmount * 100) / 100,
+                isHealthy: stat.successRate >= 95, // 95% success rate threshold
+            }));
+        } catch (error) {
+            logger.error("Error getting merchant payment health:", error);
+            throw error;
+        }
+    }
+}
+
+export const adminService = new AdminService();

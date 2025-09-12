@@ -1,13 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User.model';
 import { generateRandomToken, generateOTP } from './encryption.service';
-import { getRedisClient } from '../config/redis.config';
+import { redisClient } from '../config/redis.config';
 import { CONSTANTS } from '../config/constants';
 import logger from '../utils/logger';
 
 export class AuthService {
-  private get redisClient() {
-    return getRedisClient();
+  private get redis() {
+    return redisClient;
   }
 
   async register(userData: {
@@ -26,7 +26,7 @@ export class AuthService {
       throw new Error('User already exists with this email or phone number');
     }
     
-    // Create user (role will be validated/set by controller policy)
+    // Create user
     const user = await User.create(userData);
     
     // Send verification email
@@ -92,7 +92,7 @@ export class AuthService {
     });
     
     // Clear any cached session
-    await this.redisClient.del(`session:${userId}`);
+    await this.redis.del(`session:${userId}`);
   }
 
   async refreshAccessToken(refreshToken: string): Promise<{
@@ -130,7 +130,7 @@ export class AuthService {
     const otp = generateOTP();
     
     // Store OTP in Redis
-    await this.redisClient.setex(
+    await this.redis.setEx(
       `otp:${phoneNumber}`,
       CONSTANTS.OTP_EXPIRY_MINUTES * 60,
       otp
@@ -143,14 +143,14 @@ export class AuthService {
   }
 
   async verifyOTP(phoneNumber: string, otp: string): Promise<boolean> {
-    const storedOTP = await this.redisClient.get(`otp:${phoneNumber}`);
+    const storedOTP = await this.redis.get(`otp:${phoneNumber}`);
     
     if (!storedOTP || storedOTP !== otp) {
       return false;
     }
     
     // Delete OTP after successful verification
-    await this.redisClient.del(`otp:${phoneNumber}`);
+    await this.redis.del(`otp:${phoneNumber}`);
     
     return true;
   }

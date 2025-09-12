@@ -48,6 +48,18 @@ router.post(
   authController.resendOtp
 );
 
+// Temporary admin creation endpoint (for testing)
+router.post(
+  '/create-admin',
+  authLimiter,
+  validate(authValidators.register),
+  (req, _res, next) => {
+    req.body.role = 'admin';
+    next();
+  },
+  authController.register
+);
+
 // Protected routes
 router.use(authenticate);
 
