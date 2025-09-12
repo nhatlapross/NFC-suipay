@@ -10,6 +10,7 @@ const router = Router();
 // Public routes (no auth required for basic validation)
 router.post(
     "/validate",
+    authenticate,
     validate(paymentValidators.validatePayment),
     paymentController.validatePayment
 );
