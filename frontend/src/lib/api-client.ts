@@ -69,6 +69,10 @@ export async function resendOtpAPI(phoneNumber: string) {
   return api.post('/auth/resend-otp', { phoneNumber });
 }
 
+export async function forgotPasswordAPI(email: string) {
+  return api.post('/auth/forgot-password', { email });
+}
+
 // User APIs
 export async function getUserProfileAPI() {
   return api.get('/user/profile');
