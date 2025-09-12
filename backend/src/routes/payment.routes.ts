@@ -5,8 +5,7 @@ import { paymentLimiter } from "../middleware/rateLimit.middleware";
 import { validate } from "../middleware/validation.middleware";
 import { paymentValidators } from "../validators/payment.validator";
 
-const router = Router();
-
+const router: Router = Router();
 // Public routes (no auth required for basic validation)
 router.post(
     "/validate",

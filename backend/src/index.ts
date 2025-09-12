@@ -24,7 +24,6 @@ import { rateLimiter } from './middleware/rateLimit.middleware';
 // Import routes
 import routes from './routes';
 import fastPaymentRoutes from './routes/fastPayment.routes';
-import { merchantPaymentRouter } from './routes/payment.routes';
 
 // Import services and workers
 import { socketService } from './services/socket.service';
@@ -126,7 +125,6 @@ app.get('/health', (_req:any, res:any) => {
 app.use('/api', routes);
 app.use('/api/fast-payment', fastPaymentRoutes);
 // Merchant tap-to-pay direct processing endpoints (API key based)
-app.use('/api/payment', merchantPaymentRouter);
 
 // Static files
 app.use('/uploads', express.static('uploads'));
