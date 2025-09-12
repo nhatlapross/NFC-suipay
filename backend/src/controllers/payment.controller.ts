@@ -1,1496 +1,1971 @@
-import { Request, Response, NextFunction } from 'express';
-import { PaymentService } from '../services/payment.service';
-import { CONSTANTS, ERROR_CODES } from '../config/constants';
-import { Card } from '../models/Card.model';
-import { User } from '../models/User.model';
-import { Merchant } from '../models/Merchant.model';
-import { Transaction } from '../models/Transaction.model';
-import { getCached, setCached, NFCCacheKeys } from '../config/redis.config';
-import { getSuiClient } from '../config/sui.config';
-import { paymentQueue } from '../config/queue.config';
-import { socketService } from '../services/socket.service';
-import { v4 as uuidv4 } from 'uuid';
-import { Transaction as SuiTransaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import logger from '../utils/logger';
+import { Request, Response, NextFunction } from "express";
+import { PaymentService } from "../services/payment.service";
+import { CONSTANTS, ERROR_CODES } from "../config/constants";
+import { Card } from "../models/Card.model";
+import { User } from "../models/User.model";
+import { Merchant } from "../models/Merchant.model";
+import { Transaction } from "../models/Transaction.model";
+import { getCached, setCached, NFCCacheKeys } from "../config/redis.config";
+import { getSuiClient } from "../config/sui.config";
+import { paymentQueue } from "../config/queue.config";
+import { socketService } from "../services/socket.service";
+import { v4 as uuidv4 } from "uuid";
+import { Transaction as SuiTransaction } from "@mysten/sui/transactions";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import logger from "../utils/logger";
 
 const paymentService = new PaymentService();
 
 export class PaymentController {
-  async validatePayment(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { cardUuid, amount, merchantId } = req.body;
-      const user = (req as any).user;
-      
-      // User authentication check
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        });
-      }
-      
-      // Input validation
-      if (!cardUuid || !amount || !merchantId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields: cardUuid, amount, merchantId',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Amount validation
-      if (typeof amount !== 'number' || amount <= 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid amount',
-          code: ERROR_CODES.INVALID_INPUT,
-        });
-      }
-      
-      if (amount < CONSTANTS.MIN_TRANSACTION_AMOUNT) {
-        return res.status(400).json({
-          success: false,
-          error: `Minimum amount is ${CONSTANTS.MIN_TRANSACTION_AMOUNT} SUI`,
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      if (amount > CONSTANTS.MAX_TRANSACTION_AMOUNT) {
-        return res.status(400).json({
-          success: false,
-          error: `Maximum amount is ${CONSTANTS.MAX_TRANSACTION_AMOUNT} SUI`,
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Validate card existence and ownership
-      const card = await Card.findOne({ cardUuid, userId: user._id });
-      if (!card) {
-        return res.status(404).json({
-          success: false,
-          error: 'Card not found or not owned by user',
-          code: ERROR_CODES.INVALID_CARD,
-        });
-      }
-      
-      // Validate card status
-      if (!card.isActive) {
-        return res.status(400).json({
-          success: false,
-          error: 'Card is not active',
-          code: ERROR_CODES.INVALID_CARD,
-        });
-      }
-      
-      if (card.blockedAt) {
-        return res.status(400).json({
-          success: false,
-          error: `Card is blocked: ${card.blockedReason || 'Unknown reason'}`,
-          code: ERROR_CODES.INVALID_CARD,
-        });
-      }
-      
-      // Check if card is expired
-      if (card.expiryDate < new Date()) {
-        return res.status(400).json({
-          success: false,
-          error: 'Card has expired',
-          code: ERROR_CODES.INVALID_CARD,
-        });
-      }
-      
-      // Validate merchant
-      const merchant = await Merchant.findOne({ merchantId });
-      if (!merchant || !merchant.isActive) {
-        return res.status(404).json({
-          success: false,
-          error: 'Invalid or inactive merchant',
-          code: ERROR_CODES.INVALID_INPUT,
-        });
-      }
-      
-      // Check spending limits
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      if (card.lastResetDate < today) {
-        // Reset daily spending if needed
-        card.dailySpent = 0;
-        if (card.lastResetDate.getMonth() !== today.getMonth()) {
-          card.monthlySpent = 0;
-        }
-        card.lastResetDate = today;
-        await card.save();
-      }
-      
-      if (card.dailySpent + amount > user.dailyLimit) {
-        return res.status(400).json({
-          success: false,
-          error: 'Daily spending limit exceeded',
-          code: ERROR_CODES.LIMIT_EXCEEDED,
-          details: {
-            currentDaily: card.dailySpent,
-            dailyLimit: user.dailyLimit,
-            requestedAmount: amount,
-          },
-        });
-      }
-      
-      if (card.monthlySpent + amount > user.monthlyLimit) {
-        return res.status(400).json({
-          success: false,
-          error: 'Monthly spending limit exceeded',
-          code: ERROR_CODES.LIMIT_EXCEEDED,
-          details: {
-            currentMonthly: card.monthlySpent,
-            monthlyLimit: user.monthlyLimit,
-            requestedAmount: amount,
-          },
-        });
-      }
-      
-      // Check wallet balance
-      try {
-        const balance = await getSuiClient().getBalance({
-          owner: user.walletAddress,
-          coinType: '0x2::sui::SUI',
-        });
-        
-        const walletBalanceInSui = parseFloat(balance.totalBalance) / 1_000_000_000;
-        const totalRequired = amount + (CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000);
-        
-        if (walletBalanceInSui < totalRequired) {
-          return res.status(400).json({
-            success: false,
-            error: 'Insufficient wallet balance',
-            code: ERROR_CODES.INSUFFICIENT_BALANCE,
-            details: {
-              walletBalance: walletBalanceInSui,
-              requiredAmount: totalRequired,
-              transactionAmount: amount,
-              estimatedGasFee: CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
-            },
-          });
-        }
-      } catch (error) {
-        logger.error('Error checking wallet balance:', error);
-        return res.status(503).json({
-          success: false,
-          error: 'Unable to verify wallet balance',
-          code: ERROR_CODES.BLOCKCHAIN_ERROR,
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Payment validation successful',
-        data: {
-          walletAddress: user.walletAddress,
-          cardInfo: {
-            cardType: card.cardType,
-            lastUsed: card.lastUsed,
-            dailySpent: card.dailySpent,
-            monthlySpent: card.monthlySpent,
-          },
-          merchantInfo: {
-            merchantName: merchant.merchantName,
-            walletAddress: merchant.walletAddress,
-          },
-          transactionDetails: {
-            amount,
-            estimatedGasFee: CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
-            totalAmount: amount + (CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000),
-          },
-        },
-      });
-    } catch (error) {
-      logger.error('Payment validation error:', error);
-      next(error);
-    }
-  }
+    // Create a payment intent (pending transaction) before confirmation
+    async createPaymentIntent(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { cardUuid, amount, merchantId } = req.body;
+            const user = (req as any).user;
 
-  // NFC validation without authentication - for terminal use
-  async validateNFCPayment(req: Request, res: Response, _next: NextFunction): Promise<void | Response> {
-    const startTime = Date.now();
-    const requestId = `nfc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    
-    try {
-      const { cardUuid, amount, merchantId, terminalId } = req.body;
-      
-      logger.info(`🔍 [${requestId}] NFC validation started`, { cardUuid, amount, merchantId });
-      
-      // Input validation
-      if (!cardUuid || !amount || !merchantId) {
-        const processingTime = Date.now() - startTime;
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields: cardUuid, amount, merchantId',
-          code: ERROR_CODES.VALIDATION_ERROR,
-          processingTime,
-          requestId,
-        });
-      }
-      
-      // Check cache first for fast response
-      const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
-      const cached = await getCached(validationKey);
-      
-      if (cached && cached.expiresAt > Date.now()) {
-        const processingTime = Date.now() - startTime;
-        logger.info(`✅ [${requestId}] Cache hit - ${processingTime}ms`);
-        
-        return res.json({
-          success: true,
-          authorized: cached.authorized,
-          authCode: cached.authCode,
-          processingTime,
-          fromCache: true,
-          requestId
-        });
-      }
-      
-      // Find card without requiring user authentication
-      const card = await Card.findOne({ cardUuid }).populate('userId');
-      if (!card) {
-        const processingTime = Date.now() - startTime;
-        await setCached(validationKey, { authorized: false, reason: 'CARD_NOT_FOUND', expiresAt: Date.now() + 30000 }, 30);
-        
-        return res.status(404).json({
-          success: false,
-          authorized: false,
-          error: 'Card not found',
-          code: ERROR_CODES.INVALID_CARD,
-          processingTime,
-          requestId,
-        });
-      }
-      
-      // Check card status
-      if (!card.isActive || card.blockedAt) {
-        const processingTime = Date.now() - startTime;
-        await setCached(validationKey, { authorized: false, reason: 'CARD_BLOCKED', expiresAt: Date.now() + 30000 }, 30);
-        
-        return res.status(400).json({
-          success: false,
-          authorized: false,
-          error: 'Card is blocked or inactive',
-          code: ERROR_CODES.INVALID_CARD,
-          processingTime,
-          requestId,
-        });
-      }
-      
-      // Verify merchant
-      const merchant = await Merchant.findOne({ merchantId });
-      if (!merchant || !merchant.isActive) {
-        const processingTime = Date.now() - startTime;
-        return res.status(404).json({
-          success: false,
-          authorized: false,
-          error: 'Invalid merchant',
-          code: ERROR_CODES.INVALID_INPUT,
-          processingTime,
-          requestId,
-        });
-      }
-      
-      // Check spending limits
-      const user = card.userId as any;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      if (card.dailySpent + amount > (card.dailyLimit || user.dailyLimit || CONSTANTS.DAILY_AMOUNT_LIMIT)) {
-        const processingTime = Date.now() - startTime;
-        await setCached(validationKey, { authorized: false, reason: 'DAILY_LIMIT', expiresAt: Date.now() + 30000 }, 30);
-        
-        return res.status(400).json({
-          success: false,
-          authorized: false,
-          error: 'Daily limit exceeded',
-          code: ERROR_CODES.LIMIT_EXCEEDED,
-          processingTime,
-          requestId,
-          details: {
-            dailySpent: card.dailySpent,
-            dailyLimit: card.dailyLimit || user.dailyLimit,
-            requestedAmount: amount,
-          }
-        });
-      }
-      
-      // Amount validation
-      if (amount > CONSTANTS.MAX_TRANSACTION_AMOUNT) {
-        const processingTime = Date.now() - startTime;
-        return res.status(400).json({
-          success: false,
-          authorized: false,
-          error: `Maximum amount is ${CONSTANTS.MAX_TRANSACTION_AMOUNT} SUI`,
-          code: ERROR_CODES.VALIDATION_ERROR,
-          processingTime,
-          requestId,
-        });
-      }
-      
-      // Generate auth code
-      const authCode = `NFC_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`.toUpperCase();
-      
-      // Cache successful validation
-      const result = {
-        authorized: true,
-        authCode,
-        expiresAt: Date.now() + 30000, // 30 seconds
-        cardInfo: {
-          cardType: card.cardType,
-          lastUsed: card.lastUsed,
-          remainingDaily: (card.dailyLimit || user.dailyLimit) - card.dailySpent,
-        },
-        merchantInfo: {
-          merchantName: merchant.merchantName,
-          terminalId: terminalId,
-        }
-      };
-      
-      await setCached(validationKey, result, 30);
-      
-      const processingTime = Date.now() - startTime;
-      logger.info(`✅ [${requestId}] NFC validation successful - ${processingTime}ms`);
-      
-      res.json({
-        success: true,
-        authorized: true,
-        authCode,
-        processingTime,
-        fromCache: false,
-        requestId,
-        validUntil: new Date(result.expiresAt),
-        details: result.cardInfo,
-        merchant: result.merchantInfo,
-      });
-      
-    } catch (error) {
-      const processingTime = Date.now() - startTime;
-      logger.error(`❌ [${requestId}] NFC validation error (${processingTime}ms):`, error);
-      
-      res.status(500).json({
-        success: false,
-        authorized: false,
-        error: 'Validation service temporarily unavailable',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        processingTime,
-        requestId,
-        fallback: true,
-      });
-    }
-  }
+            // Basic validation similar to processPayment preconditions
+            if (!cardUuid || !amount || !merchantId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: cardUuid, amount, merchantId",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
 
-  async processNFCPaymentAsync(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { cardUuid, amount, merchantId, terminalId } = req.body;
-      const user = (req as any).user;
-      
-      // Input validation
-      if (!cardUuid || !amount || !merchantId || !terminalId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
+            // Validate card ownership and status
+            const card = await Card.findOne({ cardUuid, userId: user._id });
+            if (!card || !card.isActive || card.blockedAt) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid or inactive card",
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
 
-      // Check if user has a wallet address
-      if (!user.walletAddress) {
-        // For testing purposes, use a default wallet address
-        // In production, this should prompt user to set up their wallet
-        user.walletAddress = '0xdefault_user_wallet_' + user._id;
-      }
-      
-      // Quick pre-validation using cache
-      const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
-      const cachedValidation = await getCached(validationKey);
-      
-      if (cachedValidation === false) {
-        return res.status(400).json({
-          success: false,
-          error: 'Payment validation failed',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
+            // Validate merchant
+            const merchant = await Merchant.findOne({ merchantId });
+            if (!merchant || !merchant.isActive) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Invalid or inactive merchant",
+                    code: ERROR_CODES.INVALID_INPUT,
+                });
+            }
 
-      // Find merchant by merchantId string
-      const merchant = await Merchant.findOne({ merchantId });
-      if (!merchant) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid merchant',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Generate transaction ID
-      const transactionId = uuidv4();
-      
-      // Calculate gas fee (example: 0.001 SUI)
-      const gasFee = 0.001;
-      const totalAmount = amount + gasFee;
-      
-      // Create pending transaction for immediate response
-      await Transaction.create({
-        transactionId,
-        userId: user._id,
-        cardUuid,
-        txHash: 'pending_' + transactionId,  // Temporary hash for pending transaction
-        type: 'payment',
-        amount,
-        currency: 'SUI',
-        status: 'pending',
-        merchantId: (merchant as any)._id,  // Use the MongoDB ObjectId
-        merchantName: merchant.merchantName,
-        terminalId,
-        fromAddress: user.walletAddress,
-        toAddress: merchant.walletAddress,  // Add merchant wallet address
-        gasFee,
-        totalAmount,  // Add calculated total
-        metadata: {
-          ipAddress: req.ip || req.connection.remoteAddress,
-          userAgent: req.headers['user-agent'],
-          timestamp: new Date(),
-          merchantIdString: merchantId,  // Store original merchantId string for reference
-          terminalId,
-        },
-      });
-      
-      // Add to processing queue
-      const job = await paymentQueue.add(
-        'processNFCPayment',
-        {
-          transactionId,
-          paymentData: {
-            cardUuid,
-            amount,
-            merchantId: (merchant as any)._id.toString(),
-            merchantWalletAddress: merchant.walletAddress,
-            terminalId,
-            userId: user.id,
-            userWalletAddress: user.walletAddress,
-            gasFee,
-            totalAmount,
-          },
-        },
-        {
-          priority: amount > 1000000 ? 5 : 10, // Higher priority for large amounts
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-        }
-      );
-      
-      // Connect user to socket for real-time updates
-      socketService.addUserSocket(user.id, req.headers['x-socket-id'] as string || '');
-      
-      logger.info(`Async payment initiated`, {
-        transactionId,
-        jobId: job.id,
-        userId: user.id,
-        amount,
-      });
-      
-      // Return immediate response
-      res.status(202).json({
-        success: true,
-        message: 'Payment processing initiated',
-        transactionId,
-        status: 'pending',
-        estimatedProcessingTime: '2-5 seconds',
-        tracking: {
-          jobId: job.id,
-          transactionId,
-          websocketChannel: `user:${user.id}`,
-        },
-      });
-      
-    } catch (error) {
-      logger.error('Async payment initiation error:', error);
-      next(error);
-    }
-  }
+            // Create a pending transaction as the intent
+            const intent = await Transaction.create({
+                userId: user._id,
+                cardId: card._id,
+                cardUuid,
+                type: "payment",
+                amount,
+                currency: "SUI",
+                merchantId: merchant._id,
+                merchantName: merchant.merchantName,
+                status: "pending",
+                fromAddress: user.walletAddress,
+                toAddress: merchant.walletAddress,
+                metadata: {
+                    intent: true,
+                    createdAt: new Date(),
+                    ipAddress: req.ip || req.connection.remoteAddress,
+                    userAgent: req.headers["user-agent"],
+                },
+            });
 
-  async processNFCPaymentDirect(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { cardUuid, amount, merchantId, terminalId } = req.body;
-      const user = (req as any).user;
-      
-      // Input validation
-      if (!cardUuid || !amount || !merchantId || !terminalId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
+            return res.status(201).json({
+                success: true,
+                message: "Payment intent created",
+                intent: {
+                    id: intent._id,
+                    amount: intent.amount,
+                    status: intent.status,
+                    merchantName: intent.merchantName,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
 
-      // Check if user has a wallet address
-      if (!user.walletAddress) {
-        user.walletAddress = '0xdefault_user_wallet_' + user._id;
-      }
+    // Confirm payment using PIN and execute blockchain transfer based on a pending intent
+    async confirmPayment(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const { pin } = req.body as { pin: string };
+            const user = (req as any).user;
 
-      // Find merchant by merchantId string
-      const merchant = await Merchant.findOne({ merchantId });
-      if (!merchant) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid merchant',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Generate transaction ID
-      const transactionId = uuidv4();
-      
-      // Calculate gas fee
-      const gasFee = 0.001;
-      const totalAmount = amount + gasFee;
-      
-      // Create transaction record
-      const transaction = await Transaction.create({
-        transactionId,
-        userId: user._id,
-        cardUuid,
-        txHash: 'pending_' + transactionId,
-        type: 'payment',
-        amount,
-        currency: 'SUI',
-        status: 'processing',
-        merchantId: (merchant as any)._id,
-        merchantName: merchant.merchantName,
-        terminalId,
-        fromAddress: user.walletAddress,
-        toAddress: merchant.walletAddress,
-        gasFee,
-        totalAmount,
-        metadata: {
-          ipAddress: req.ip || req.connection.remoteAddress,
-          userAgent: req.headers['user-agent'],
-          timestamp: new Date(),
-          merchantIdString: merchantId,
-          terminalId,
-        },
-      });
+            // Require PIN for confirmation
+            if (!pin) {
+                return res.status(400).json({
+                    success: false,
+                    error: "PIN is required",
+                    code: ERROR_CODES.AUTH_FAILED,
+                });
+            }
 
-      // Process directly (like the successful test script)
-      const userWithKey = await User.findById(user._id).select('+encryptedPrivateKey');
-      if (!userWithKey || !userWithKey.encryptedPrivateKey) {
-        throw new Error('User wallet not configured');
-      }
+            // Verify PIN
+            const isPinValid = await this.verifyUserPin(user.id, pin);
+            if (!isPinValid) {
+                return res.status(401).json({
+                    success: false,
+                    error: "Invalid PIN",
+                    code: ERROR_CODES.AUTH_FAILED,
+                });
+            }
 
-      // Process blockchain transaction directly
-      let keypair: Ed25519Keypair;
-      if (userWithKey.encryptedPrivateKey.startsWith('suiprivkey1')) {
-        keypair = Ed25519Keypair.fromSecretKey(userWithKey.encryptedPrivateKey);
-      } else {
-        throw new Error('Private key format not supported');
-      }
-      
-      const amountInMist = Math.floor(amount * 1_000_000_000);
-      const tx = new SuiTransaction();
-      tx.setSender(user.walletAddress);
-      
-      const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(amountInMist)]);
-      tx.transferObjects([paymentCoin], tx.pure.address(merchant.walletAddress));
-      tx.setGasBudget(10000000);
-      
-      const suiClient = getSuiClient();
-      const result = await suiClient.signAndExecuteTransaction({
-        transaction: tx,
-        signer: keypair,
-        options: {
-          showEffects: true,
-          showObjectChanges: true,
-          showEvents: true,
-        },
-      });
-      
-      await suiClient.waitForTransaction({
-        digest: result.digest,
-        options: { showEffects: true },
-      });
-      
-      const actualGasFee = Number(result.effects?.gasUsed?.computationCost || 0) / 1_000_000_000;
-      
-      // Update transaction with success
-      transaction.status = 'completed';
-      transaction.txHash = result.digest;
-      transaction.gasFee = actualGasFee;
-      transaction.totalAmount = amount + actualGasFee;
-      transaction.completedAt = new Date();
-      await transaction.save();
+            // Load pending intent
+            const intent = await Transaction.findById(id);
+            if (!intent) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Payment intent not found",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
 
-      res.json({
-        success: true,
-        message: 'Payment completed successfully',
-        transaction: {
-          transactionId,
-          txHash: result.digest,
-          amount,
-          gasFee: actualGasFee,
-          totalAmount: amount + actualGasFee,
-          status: 'completed',
-          explorerUrl: `https://suiscan.xyz/${process.env.SUI_NETWORK || 'testnet'}/tx/${result.digest}`,
-        },
-      });
-      
-    } catch (error) {
-      logger.error('Direct payment error:', error);
-      next(error);
-    }
-  }
+            // Ownership check
+            if (intent.userId.toString() !== user.id) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized to confirm this payment",
+                    code: ERROR_CODES.UNAUTHORIZED,
+                });
+            }
 
-  async processPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { cardUuid, amount, merchantId, pin } = req.body;
-      const user = (req as any).user;
-      
-      // Input validation
-      if (!cardUuid || !amount || !merchantId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // PIN verification for high-value transactions
-      if (amount > CONSTANTS.DAILY_AMOUNT_LIMIT / 10) { // 10% of daily limit
-        if (!pin) {
-          return res.status(400).json({
-            success: false,
-            error: 'PIN required for high-value transactions',
-            code: ERROR_CODES.AUTH_FAILED,
-          });
-        }
-        
-        // Verify PIN (implement PIN verification logic)
-        const isPinValid = await this.verifyUserPin(user.id, pin);
-        if (!isPinValid) {
-          return res.status(400).json({
-            success: false,
-            error: 'Invalid PIN',
-            code: ERROR_CODES.AUTH_FAILED,
-          });
-        }
-      }
-      
-      // Rate limiting check
-      const rateLimitKey = `payment_rate_${user.id}`;
-      const recentTransactions = await getCached(rateLimitKey) || 0;
-      
-      if (recentTransactions >= CONSTANTS.DAILY_TRANSACTION_LIMIT) {
-        return res.status(429).json({
-          success: false,
-          error: 'Daily transaction limit exceeded',
-          code: ERROR_CODES.LIMIT_EXCEEDED,
-        });
-      }
-      
-      // Prepare transaction metadata
-      const metadata = {
-        ipAddress: req.ip || req.connection.remoteAddress,
-        userAgent: req.headers['user-agent'],
-        device: req.headers['x-device-id'] as string,
-        location: req.headers['x-location'] as string,
-        timestamp: new Date().toISOString(),
-        apiVersion: '1.0',
-      };
-      
-      logger.info(`Processing payment: ${cardUuid} -> ${merchantId}, amount: ${amount}`, {
-        userId: user.id,
-        metadata,
-      });
-      
-      // Process payment through service
-      const transaction = await paymentService.processPayment(
-        cardUuid,
-        amount,
-        merchantId,
-        metadata
-      );
-      
-      // Update rate limiting counter
-      await setCached(rateLimitKey, recentTransactions + 1, 24 * 60 * 60); // 24 hours TTL
-      
-      // Log successful transaction
-      logger.info(`Payment processed successfully: ${transaction._id}`, {
-        txId: transaction._id,
-        txHash: transaction.txHash,
-        userId: user.id,
-        amount,
-        status: transaction.status,
-      });
-      
-      res.json({
-        success: true,
-        message: 'Payment processed successfully',
-        transaction: {
-          id: transaction._id,
-          txHash: transaction.txHash,
-          amount: transaction.amount,
-          totalAmount: transaction.totalAmount,
-          gasFee: transaction.gasFee,
-          status: transaction.status,
-          merchantName: transaction.merchantName,
-          timestamp: transaction.createdAt,
-          estimatedConfirmationTime: '2-5 seconds',
-        },
-        receipt: {
-          transactionId: transaction._id,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          merchant: transaction.merchantName,
-          cardLast4: cardUuid.slice(-4),
-          timestamp: transaction.createdAt,
-          status: transaction.status,
-        },
-      });
-    } catch (error) {
-      logger.error('Payment processing error:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        userId: (req as any).user?.id,
-        body: req.body,
-      });
-      
-      // Handle specific error types
-      if (error instanceof Error) {
-        if (error.message.includes('insufficient balance')) {
-          return res.status(400).json({
-            success: false,
-            error: 'Insufficient balance',
-            code: ERROR_CODES.INSUFFICIENT_BALANCE,
-          });
-        }
-        
-        if (error.message.includes('limit exceeded')) {
-          return res.status(400).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.LIMIT_EXCEEDED,
-          });
-        }
-        
-        if (error.message.includes('Card')) {
-          return res.status(400).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.INVALID_CARD,
-          });
-        }
-      }
-      
-      next(error);
-    }
-  }
-  
-  private async verifyUserPin(userId: string, pin: string): Promise<boolean> {
-    try {
-      const user = await User.findById(userId).select('+pinHash');
-      if (!user) {
-        return false;
-      }
-      
-      // Use the comparePin method from User model
-      return await user.comparePin!(pin);
-    } catch (error) {
-      logger.error('PIN verification error:', error);
-      return false;
-    }
-  }
+            if (intent.status !== "pending") {
+                return res.status(400).json({
+                    success: false,
+                    error: "Payment is not in a confirmable state",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
 
-  async signTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { transactionBytes, cardUuid, amount } = req.body;
-      const user = (req as any).user;
-      
-      // Input validation
-      if (!transactionBytes || !cardUuid) {
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields: transactionBytes, cardUuid',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Verify card ownership
-      const card = await Card.findOne({ cardUuid, userId: user.id });
-      if (!card || !card.isActive) {
-        return res.status(404).json({
-          success: false,
-          error: 'Card not found or not active',
-          code: ERROR_CODES.INVALID_CARD,
-        });
-      }
-      
-      // Create pending transaction record for tracking
-      const pendingTransaction = await Transaction.create({
-        userId: user._id,
-        cardId: card._id,
-        cardUuid,
-        type: 'payment',
-        amount: amount || 0,
-        currency: 'SUI',
-        status: 'pending',
-        fromAddress: user.walletAddress,
-        toAddress: '', // Will be filled when merchant is known
-        metadata: {
-          signedAt: new Date(),
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
-        },
-      });
-      
-      try {
-        // Import required Sui modules
-        const { Transaction } = require('@mysten/sui/transactions');
-        const { Ed25519Keypair } = require('@mysten/sui/keypairs/ed25519');
-        const { decryptPrivateKey } = require('../services/encryption.service');
-        
-        // Get user's private key
-        const userWithKey = await User.findById(user.id).select('+encryptedPrivateKey');
-        if (!userWithKey || !userWithKey.encryptedPrivateKey) {
-          throw new Error('User private key not found');
-        }
-        
-        // Decrypt and create keypair
-        const privateKey = decryptPrivateKey(userWithKey.encryptedPrivateKey);
-        const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
-        
-        // Parse transaction bytes
-        const transactionBytesArray = Array.isArray(transactionBytes) 
-          ? new Uint8Array(transactionBytes) 
-          : new Uint8Array(Buffer.from(transactionBytes, 'base64'));
-        
-        // Deserialize transaction
-        const tx = Transaction.from(transactionBytesArray);
-        
-        // Verify transaction sender matches user wallet
-        if (tx.getSender() !== user.walletAddress) {
-          return res.status(400).json({
-            success: false,
-            error: 'Transaction sender does not match user wallet',
-            code: ERROR_CODES.AUTH_FAILED,
-          });
-        }
-        
-        // Sign the transaction
-        const transactionBytesForSigning = await tx.build({ client: getSuiClient() });
-        const signature = await keypair.signTransaction(transactionBytesForSigning);
-        
-        // Update pending transaction with signature info
-        pendingTransaction.status = 'processing';
-        pendingTransaction.metadata = {
-          ...pendingTransaction.metadata,
-          signatureGenerated: true,
-          signedBytes: transactionBytes,
-        };
-        await pendingTransaction.save();
-        
-        logger.info(`Transaction signed successfully`, {
-          transactionId: pendingTransaction._id,
-          userId: user.id,
-          cardUuid,
-        });
-        
-        res.json({
-          success: true,
-          message: 'Transaction signed successfully',
-          signature: signature.signature,
-          transactionId: pendingTransaction._id,
-          data: {
-            signature: signature.signature,
-            publicKey: keypair.getPublicKey().toSuiAddress(),
-            transactionBytes: Buffer.from(transactionBytesForSigning).toString('base64'),
-          },
-        });
-        
-      } catch (signingError) {
-        // Update transaction status to failed
-        pendingTransaction.status = 'failed';
-        pendingTransaction.failureReason = signingError instanceof Error ? signingError.message : 'Signing failed';
-        await pendingTransaction.save();
-        
-        throw signingError;
-      }
-      
-    } catch (error) {
-      logger.error('Transaction signing error:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        userId: (req as any).user?.id,
-        cardUuid: req.body.cardUuid,
-      });
-      
-      if (error instanceof Error && error.message.includes('decrypt')) {
-        return res.status(500).json({
-          success: false,
-          error: 'Unable to access wallet keys',
-          code: ERROR_CODES.INTERNAL_ERROR,
-        });
-      }
-      
-      next(error);
-    }
-  }
+            // Execute payment using service (ensures all validations and on-chain execution)
+            const processed = await paymentService.processPayment(
+                intent.cardUuid!,
+                intent.amount,
+                intent.merchantId!.toString(),
+                { ...intent.metadata, confirmedFromIntent: id }
+            );
 
-  async completePayment(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { txHash, transactionId } = req.body;
-      const user = (req as any).user;
-      
-      // Input validation
-      if (!txHash || (!transactionId && !req.body.cardUuid)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields: txHash and (transactionId or cardUuid)',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Find the pending transaction
-      let transaction;
-      if (transactionId) {
-        transaction = await Transaction.findById(transactionId);
-      } else {
-        transaction = await Transaction.findOne({ 
-          cardUuid: req.body.cardUuid, 
-          userId: user.id, 
-          status: 'processing' 
-        }).sort({ createdAt: -1 });
-      }
-      
-      if (!transaction) {
-        return res.status(404).json({
-          success: false,
-          error: 'Transaction not found or not in processing state',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Verify transaction ownership
-      if (transaction.userId.toString() !== user.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'Unauthorized to complete this transaction',
-          code: ERROR_CODES.UNAUTHORIZED,
-        });
-      }
-      
-      try {
-        // Verify transaction on blockchain
-        const blockchainTx = await getSuiClient().waitForTransaction({
-          digest: txHash,
-          options: {
-            showEffects: true,
-            showObjectChanges: true,
-            showBalanceChanges: true,
-          },
-        });
-        
-        // Check if transaction was successful on blockchain
-        const isSuccess = blockchainTx.effects?.status?.status === 'success';
-        
-        if (!isSuccess) {
-          transaction.status = 'failed';
-          transaction.failureReason = 'Blockchain transaction failed';
-          await transaction.save();
-          
-          return res.status(400).json({
-            success: false,
-            error: 'Transaction failed on blockchain',
-            code: ERROR_CODES.TRANSACTION_FAILED,
-            details: blockchainTx.effects?.status,
-          });
+            return res.json({
+                success: true,
+                message: "Payment confirmed and processed",
+                transaction: {
+                    id: processed._id,
+                    txHash: processed.txHash,
+                    amount: processed.amount,
+                    totalAmount: processed.totalAmount,
+                    gasFee: processed.gasFee,
+                    status: processed.status,
+                    merchantName: processed.merchantName,
+                },
+            });
+        } catch (error) {
+            next(error);
         }
-        
-        // Extract gas fee from blockchain transaction
-        const gasFeeFromChain = blockchainTx.effects?.gasUsed ? 
-          (parseInt(blockchainTx.effects.gasUsed.computationCost) + 
-           parseInt(blockchainTx.effects.gasUsed.storageCost)) : 0;
-        
-        // Update transaction with completion details
-        transaction.status = 'completed';
-        transaction.txHash = txHash;
-        transaction.gasFee = gasFeeFromChain / 1_000_000_000; // Convert MIST to SUI
-        transaction.totalAmount = transaction.amount + transaction.gasFee;
-        transaction.completedAt = new Date();
-        transaction.metadata = {
-          ...transaction.metadata,
-          blockchainConfirmed: true,
-          confirmationTime: new Date(),
-          gasUsed: blockchainTx.effects?.gasUsed,
-          balanceChanges: blockchainTx.balanceChanges,
-        };
-        
-        await transaction.save();
-        
-        // Update card usage statistics
-        if (transaction.cardId) {
-          await Card.findByIdAndUpdate(transaction.cardId, {
-            $inc: { 
-              dailySpent: transaction.amount,
-              monthlySpent: transaction.amount,
-              usageCount: 1 
-            },
-            lastUsed: new Date(),
-          });
-        }
-        
-        // Update merchant statistics if applicable
-        if (transaction.merchantId) {
-          await Merchant.findByIdAndUpdate(transaction.merchantId, {
-            $inc: {
-              totalTransactions: 1,
-              totalVolume: transaction.amount,
-            },
-            lastTransactionAt: new Date(),
-          });
-        }
-        
-        // Cache the completed transaction
-        await setCached(
-          `completed_tx:${txHash}`, 
-          transaction, 
-          CONSTANTS.CACHE_TTL.TRANSACTION
-        );
-        
-        logger.info(`Payment completed successfully`, {
-          transactionId: transaction._id,
-          txHash,
-          userId: user.id,
-          amount: transaction.amount,
-          gasFee: transaction.gasFee,
-        });
-        
-        res.json({
-          success: true,
-          message: 'Payment completed successfully',
-          transaction: {
-            id: transaction._id,
-            txHash: transaction.txHash,
-            amount: transaction.amount,
-            gasFee: transaction.gasFee,
-            totalAmount: transaction.totalAmount,
-            status: transaction.status,
-            completedAt: transaction.completedAt,
-            merchantName: transaction.merchantName,
-          },
-          receipt: {
-            transactionId: transaction._id,
-            txHash: transaction.txHash,
-            amount: transaction.amount,
-            currency: transaction.currency,
-            gasFee: transaction.gasFee,
-            totalAmount: transaction.totalAmount,
-            merchant: transaction.merchantName,
-            timestamp: transaction.completedAt,
-            status: 'completed',
-          },
-          blockchain: {
-            confirmed: true,
-            confirmationTime: blockchainTx.timestampMs,
-            gasUsed: blockchainTx.effects?.gasUsed,
-            explorerUrl: `https://suiscan.xyz/testnet/tx/${txHash}`,
-          },
-        });
-        
-      } catch (blockchainError) {
-        // Update transaction as failed
-        transaction.status = 'failed';
-        transaction.failureReason = blockchainError instanceof Error ? 
-          blockchainError.message : 'Blockchain verification failed';
-        await transaction.save();
-        
-        logger.error('Blockchain verification failed:', {
-          error: blockchainError,
-          txHash,
-          transactionId: transaction._id,
-        });
-        
-        return res.status(400).json({
-          success: false,
-          error: 'Unable to verify transaction on blockchain',
-          code: ERROR_CODES.BLOCKCHAIN_ERROR,
-        });
-      }
-      
-    } catch (error) {
-      logger.error('Payment completion error:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        userId: (req as any).user?.id,
-        body: req.body,
-      });
-      next(error);
     }
-  }
 
-  async getTransactionHistory(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const userId = (req as any).user.id;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = Math.min(
-        parseInt(req.query.limit as string) || CONSTANTS.DEFAULT_PAGE_SIZE,
-        CONSTANTS.MAX_PAGE_SIZE
-      );
-      
-      const result = await paymentService.getTransactionHistory(userId, page, limit);
-      
-      res.json({
-        success: true,
-        ...result,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+    // Get payment status by id
+    async getPaymentStatus(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const user = (req as any).user;
 
-  async getTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params;
-      const transaction = await paymentService.getTransactionById(id);
-      
-      if (!transaction) {
-        return res.status(404).json({
-          success: false,
-          error: 'Transaction not found',
-        });
-      }
-      
-      res.json({
-        success: true,
-        transaction,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+            const transaction = await Transaction.findById(id);
+            if (!transaction) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Transaction not found",
+                });
+            }
 
-  async refundTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params;
-      const { reason } = req.body;
-      
-      const transaction = await paymentService.refundTransaction(id, reason);
-      
-      res.json({
-        success: true,
-        transaction,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+            // If this transaction belongs to a user, enforce ownership
+            if (
+                transaction.userId &&
+                transaction.userId.toString() !== user.id
+            ) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized to view this transaction",
+                    code: ERROR_CODES.UNAUTHORIZED,
+                });
+            }
 
-  async getPaymentStats(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const userId = (req as any).user.id;
-      const period = (req.query.period as string) || 'month';
-      const cardUuid = req.query.cardUuid as string;
-      
-      // Use service to get payment stats (delegate the heavy logic to service)
-      const stats = await paymentService.getPaymentStats(userId, period, cardUuid);
-      
-      res.json({
-        success: true,
-        stats,
-      });
-    } catch (error) {
-      logger.error('Payment stats error:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        userId: (req as any).user?.id,
-        period: req.query.period,
-      });
-      
-      if (error instanceof Error && error.message.includes('Invalid period')) {
-        return res.status(400).json({
-          success: false,
-          error: error.message,
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      next(error);
-    }
-  }
-  // Additional utility methods
-  
-  async cancelPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params;
-      const { reason } = req.body;
-      const user = (req as any).user;
-      
-      // Use service to cancel payment
-      const transaction = await paymentService.cancelTransaction(id, user.id, reason);
-      
-      res.json({
-        success: true,
-        message: 'Transaction cancelled successfully',
-        transaction: {
-          id: transaction._id,
-          status: transaction.status,
-          cancelledAt: transaction.updatedAt,
-        },
-      });
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('not found')) {
-          return res.status(404).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.VALIDATION_ERROR,
-          });
+            return res.json({
+                success: true,
+                status: transaction.status,
+                transaction: {
+                    id: transaction._id,
+                    amount: transaction.amount,
+                    totalAmount: transaction.totalAmount,
+                    gasFee: transaction.gasFee,
+                    status: transaction.status,
+                    txHash: transaction.txHash,
+                    merchantName: transaction.merchantName,
+                    createdAt: transaction.createdAt,
+                    completedAt: transaction.completedAt,
+                },
+            });
+        } catch (error) {
+            next(error);
         }
-        if (error.message.includes('Unauthorized')) {
-          return res.status(403).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.UNAUTHORIZED,
-          });
-        }
-        if (error.message.includes('Cannot cancel')) {
-          return res.status(400).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.VALIDATION_ERROR,
-          });
-        }
-      }
-      next(error);
     }
-  }
-  
-  async retryPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params;
-      const user = (req as any).user;
-      
-      // Use service to retry payment
-      const result = await paymentService.retryTransaction(id, user.id);
-      
-      res.json({
-        success: true,
-        message: 'Payment retry initiated',
-        originalTransactionId: id,
-        newTransaction: {
-          id: result.newTransaction._id,
-          status: result.newTransaction.status,
-          amount: result.newTransaction.amount,
-        },
-      });
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('not found')) {
-          return res.status(404).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.VALIDATION_ERROR,
-          });
+    async validatePayment(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { cardUuid, amount, merchantId } = req.body;
+            const user = (req as any).user;
+
+            // User authentication check
+            if (!user) {
+                return res.status(401).json({
+                    success: false,
+                    error: "Authentication required",
+                    code: ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+
+            // Input validation
+            if (!cardUuid || !amount || !merchantId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: cardUuid, amount, merchantId",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Amount validation
+            if (typeof amount !== "number" || amount <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid amount",
+                    code: ERROR_CODES.INVALID_INPUT,
+                });
+            }
+
+            if (amount < CONSTANTS.MIN_TRANSACTION_AMOUNT) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Minimum amount is ${CONSTANTS.MIN_TRANSACTION_AMOUNT} SUI`,
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            if (amount > CONSTANTS.MAX_TRANSACTION_AMOUNT) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Maximum amount is ${CONSTANTS.MAX_TRANSACTION_AMOUNT} SUI`,
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Validate card existence and ownership
+            const card = await Card.findOne({ cardUuid, userId: user._id });
+            if (!card) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Card not found or not owned by user",
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
+
+            // Validate card status
+            if (!card.isActive) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Card is not active",
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
+
+            if (card.blockedAt) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Card is blocked: ${card.blockedReason || "Unknown reason"}`,
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
+
+            // Check if card is expired
+            if (card.expiryDate < new Date()) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Card has expired",
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
+
+            // Validate merchant
+            const merchant = await Merchant.findOne({ merchantId });
+            if (!merchant || !merchant.isActive) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Invalid or inactive merchant",
+                    code: ERROR_CODES.INVALID_INPUT,
+                });
+            }
+
+            // Check spending limits
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (card.lastResetDate < today) {
+                // Reset daily spending if needed
+                card.dailySpent = 0;
+                if (card.lastResetDate.getMonth() !== today.getMonth()) {
+                    card.monthlySpent = 0;
+                }
+                card.lastResetDate = today;
+                await card.save();
+            }
+
+            if (card.dailySpent + amount > user.dailyLimit) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Daily spending limit exceeded",
+                    code: ERROR_CODES.LIMIT_EXCEEDED,
+                    details: {
+                        currentDaily: card.dailySpent,
+                        dailyLimit: user.dailyLimit,
+                        requestedAmount: amount,
+                    },
+                });
+            }
+
+            if (card.monthlySpent + amount > user.monthlyLimit) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Monthly spending limit exceeded",
+                    code: ERROR_CODES.LIMIT_EXCEEDED,
+                    details: {
+                        currentMonthly: card.monthlySpent,
+                        monthlyLimit: user.monthlyLimit,
+                        requestedAmount: amount,
+                    },
+                });
+            }
+
+            // Check wallet balance
+            try {
+                const balance = await getSuiClient().getBalance({
+                    owner: user.walletAddress,
+                    coinType: "0x2::sui::SUI",
+                });
+
+                const walletBalanceInSui =
+                    parseFloat(balance.totalBalance) / 1_000_000_000;
+                const totalRequired =
+                    amount + CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000;
+
+                if (walletBalanceInSui < totalRequired) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Insufficient wallet balance",
+                        code: ERROR_CODES.INSUFFICIENT_BALANCE,
+                        details: {
+                            walletBalance: walletBalanceInSui,
+                            requiredAmount: totalRequired,
+                            transactionAmount: amount,
+                            estimatedGasFee:
+                                CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
+                        },
+                    });
+                }
+            } catch (error) {
+                logger.error("Error checking wallet balance:", error);
+                return res.status(503).json({
+                    success: false,
+                    error: "Unable to verify wallet balance",
+                    code: ERROR_CODES.BLOCKCHAIN_ERROR,
+                });
+            }
+
+            res.json({
+                success: true,
+                message: "Payment validation successful",
+                data: {
+                    walletAddress: user.walletAddress,
+                    cardInfo: {
+                        cardType: card.cardType,
+                        lastUsed: card.lastUsed,
+                        dailySpent: card.dailySpent,
+                        monthlySpent: card.monthlySpent,
+                    },
+                    merchantInfo: {
+                        merchantName: merchant.merchantName,
+                        walletAddress: merchant.walletAddress,
+                    },
+                    transactionDetails: {
+                        amount,
+                        estimatedGasFee:
+                            CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
+                        totalAmount:
+                            amount +
+                            CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
+                    },
+                },
+            });
+        } catch (error) {
+            logger.error("Payment validation error:", error);
+            next(error);
         }
-        if (error.message.includes('Unauthorized')) {
-          return res.status(403).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.UNAUTHORIZED,
-          });
+    }
+
+    // NFC validation without authentication - for terminal use
+    async validateNFCPayment(
+        req: Request,
+        res: Response,
+        _next: NextFunction
+    ): Promise<void | Response> {
+        const startTime = Date.now();
+        const requestId = `nfc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+        try {
+            const { cardUuid, amount, merchantId, terminalId } = req.body;
+
+            logger.info(`🔍 [${requestId}] NFC validation started`, {
+                cardUuid,
+                amount,
+                merchantId,
+            });
+
+            // Input validation
+            if (!cardUuid || !amount || !merchantId) {
+                const processingTime = Date.now() - startTime;
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: cardUuid, amount, merchantId",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                    processingTime,
+                    requestId,
+                });
+            }
+
+            // Check cache first for fast response
+            const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
+            const cached = await getCached(validationKey);
+
+            if (cached && cached.expiresAt > Date.now()) {
+                const processingTime = Date.now() - startTime;
+                logger.info(
+                    `✅ [${requestId}] Cache hit - ${processingTime}ms`
+                );
+
+                return res.json({
+                    success: true,
+                    authorized: cached.authorized,
+                    authCode: cached.authCode,
+                    processingTime,
+                    fromCache: true,
+                    requestId,
+                });
+            }
+
+            // Find card without requiring user authentication
+            const card = await Card.findOne({ cardUuid }).populate("userId");
+            if (!card) {
+                const processingTime = Date.now() - startTime;
+                await setCached(
+                    validationKey,
+                    {
+                        authorized: false,
+                        reason: "CARD_NOT_FOUND",
+                        expiresAt: Date.now() + 30000,
+                    },
+                    30
+                );
+
+                return res.status(404).json({
+                    success: false,
+                    authorized: false,
+                    error: "Card not found",
+                    code: ERROR_CODES.INVALID_CARD,
+                    processingTime,
+                    requestId,
+                });
+            }
+
+            // Check card status
+            if (!card.isActive || card.blockedAt) {
+                const processingTime = Date.now() - startTime;
+                await setCached(
+                    validationKey,
+                    {
+                        authorized: false,
+                        reason: "CARD_BLOCKED",
+                        expiresAt: Date.now() + 30000,
+                    },
+                    30
+                );
+
+                return res.status(400).json({
+                    success: false,
+                    authorized: false,
+                    error: "Card is blocked or inactive",
+                    code: ERROR_CODES.INVALID_CARD,
+                    processingTime,
+                    requestId,
+                });
+            }
+
+            // Verify merchant
+            const merchant = await Merchant.findOne({ merchantId });
+            if (!merchant || !merchant.isActive) {
+                const processingTime = Date.now() - startTime;
+                return res.status(404).json({
+                    success: false,
+                    authorized: false,
+                    error: "Invalid merchant",
+                    code: ERROR_CODES.INVALID_INPUT,
+                    processingTime,
+                    requestId,
+                });
+            }
+
+            // Check spending limits
+            const user = card.userId as any;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (
+                card.dailySpent + amount >
+                (card.dailyLimit ||
+                    user.dailyLimit ||
+                    CONSTANTS.DAILY_AMOUNT_LIMIT)
+            ) {
+                const processingTime = Date.now() - startTime;
+                await setCached(
+                    validationKey,
+                    {
+                        authorized: false,
+                        reason: "DAILY_LIMIT",
+                        expiresAt: Date.now() + 30000,
+                    },
+                    30
+                );
+
+                return res.status(400).json({
+                    success: false,
+                    authorized: false,
+                    error: "Daily limit exceeded",
+                    code: ERROR_CODES.LIMIT_EXCEEDED,
+                    processingTime,
+                    requestId,
+                    details: {
+                        dailySpent: card.dailySpent,
+                        dailyLimit: card.dailyLimit || user.dailyLimit,
+                        requestedAmount: amount,
+                    },
+                });
+            }
+
+            // Amount validation
+            if (amount > CONSTANTS.MAX_TRANSACTION_AMOUNT) {
+                const processingTime = Date.now() - startTime;
+                return res.status(400).json({
+                    success: false,
+                    authorized: false,
+                    error: `Maximum amount is ${CONSTANTS.MAX_TRANSACTION_AMOUNT} SUI`,
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                    processingTime,
+                    requestId,
+                });
+            }
+
+            // Generate auth code
+            const authCode =
+                `NFC_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`.toUpperCase();
+
+            // Cache successful validation
+            const result = {
+                authorized: true,
+                authCode,
+                expiresAt: Date.now() + 30000, // 30 seconds
+                cardInfo: {
+                    cardType: card.cardType,
+                    lastUsed: card.lastUsed,
+                    remainingDaily:
+                        (card.dailyLimit || user.dailyLimit) - card.dailySpent,
+                },
+                merchantInfo: {
+                    merchantName: merchant.merchantName,
+                    terminalId: terminalId,
+                },
+            };
+
+            await setCached(validationKey, result, 30);
+
+            const processingTime = Date.now() - startTime;
+            logger.info(
+                `✅ [${requestId}] NFC validation successful - ${processingTime}ms`
+            );
+
+            res.json({
+                success: true,
+                authorized: true,
+                authCode,
+                processingTime,
+                fromCache: false,
+                requestId,
+                validUntil: new Date(result.expiresAt),
+                details: result.cardInfo,
+                merchant: result.merchantInfo,
+            });
+        } catch (error) {
+            const processingTime = Date.now() - startTime;
+            logger.error(
+                `❌ [${requestId}] NFC validation error (${processingTime}ms):`,
+                error
+            );
+
+            res.status(500).json({
+                success: false,
+                authorized: false,
+                error: "Validation service temporarily unavailable",
+                code: ERROR_CODES.INTERNAL_ERROR,
+                processingTime,
+                requestId,
+                fallback: true,
+            });
         }
-        if (error.message.includes('Only failed')) {
-          return res.status(400).json({
-            success: false,
-            error: error.message,
-            code: ERROR_CODES.VALIDATION_ERROR,
-          });
+    }
+
+    async processNFCPaymentAsync(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { cardUuid, amount, merchantId, terminalId } = req.body;
+            const user = (req as any).user;
+
+            // Input validation
+            if (!cardUuid || !amount || !merchantId || !terminalId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Check if user has a wallet address
+            if (!user.walletAddress) {
+                // For testing purposes, use a default wallet address
+                // In production, this should prompt user to set up their wallet
+                user.walletAddress = "0xdefault_user_wallet_" + user._id;
+            }
+
+            // Quick pre-validation using cache
+            const validationKey = NFCCacheKeys.fastValidation(cardUuid, amount);
+            const cachedValidation = await getCached(validationKey);
+
+            if (cachedValidation === false) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Payment validation failed",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Find merchant by merchantId string
+            const merchant = await Merchant.findOne({ merchantId });
+            if (!merchant) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid merchant",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Generate transaction ID
+            const transactionId = uuidv4();
+
+            // Calculate gas fee (example: 0.001 SUI)
+            const gasFee = 0.001;
+            const totalAmount = amount + gasFee;
+
+            // Create pending transaction for immediate response
+            await Transaction.create({
+                transactionId,
+                userId: user._id,
+                cardUuid,
+                txHash: "pending_" + transactionId, // Temporary hash for pending transaction
+                type: "payment",
+                amount,
+                currency: "SUI",
+                status: "pending",
+                merchantId: (merchant as any)._id, // Use the MongoDB ObjectId
+                merchantName: merchant.merchantName,
+                terminalId,
+                fromAddress: user.walletAddress,
+                toAddress: merchant.walletAddress, // Add merchant wallet address
+                gasFee,
+                totalAmount, // Add calculated total
+                metadata: {
+                    ipAddress: req.ip || req.connection.remoteAddress,
+                    userAgent: req.headers["user-agent"],
+                    timestamp: new Date(),
+                    merchantIdString: merchantId, // Store original merchantId string for reference
+                    terminalId,
+                },
+            });
+
+            // Add to processing queue
+            const job = await paymentQueue.add(
+                "processNFCPayment",
+                {
+                    transactionId,
+                    paymentData: {
+                        cardUuid,
+                        amount,
+                        merchantId: (merchant as any)._id.toString(),
+                        merchantWalletAddress: merchant.walletAddress,
+                        terminalId,
+                        userId: user.id,
+                        userWalletAddress: user.walletAddress,
+                        gasFee,
+                        totalAmount,
+                    },
+                },
+                {
+                    priority: amount > 1000000 ? 5 : 10, // Higher priority for large amounts
+                    attempts: 3,
+                    backoff: {
+                        type: "exponential",
+                        delay: 2000,
+                    },
+                }
+            );
+
+            // Connect user to socket for real-time updates
+            socketService.addUserSocket(
+                user.id,
+                (req.headers["x-socket-id"] as string) || ""
+            );
+
+            logger.info(`Async payment initiated`, {
+                transactionId,
+                jobId: job.id,
+                userId: user.id,
+                amount,
+            });
+
+            // Return immediate response
+            res.status(202).json({
+                success: true,
+                message: "Payment processing initiated",
+                transactionId,
+                status: "pending",
+                estimatedProcessingTime: "2-5 seconds",
+                tracking: {
+                    jobId: job.id,
+                    transactionId,
+                    websocketChannel: `user:${user.id}`,
+                },
+            });
+        } catch (error) {
+            logger.error("Async payment initiation error:", error);
+            next(error);
         }
-      }
-      next(error);
     }
-  }
-  
-  async getPaymentMethods(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const user = (req as any).user;
-      
-      // Get user's cards
-      const cards = await Card.find({ 
-        userId: user.id, 
-        isActive: true 
-      }).select('cardUuid cardType cardNumber isActive isPrimary lastUsed usageCount');
-      
-      // Get wallet balance
-      let walletBalance = 0;
-      try {
-        const balance = await getSuiClient().getBalance({
-          owner: user.walletAddress,
-          coinType: '0x2::sui::SUI',
-        });
-        walletBalance = parseFloat(balance.totalBalance) / 1_000_000_000;
-      } catch (error) {
-        logger.warn('Unable to fetch wallet balance', { userId: user.id });
-      }
-      
-      res.json({
-        success: true,
-        paymentMethods: {
-          wallet: {
-            address: user.walletAddress,
-            balance: walletBalance,
-            currency: 'SUI',
-          },
-          cards: cards.map(card => ({
-            uuid: card.cardUuid,
-            type: card.cardType,
-            last4: card.cardNumber.slice(-4),
-            isActive: card.isActive,
-            isPrimary: card.isPrimary,
-            lastUsed: card.lastUsed,
-            usageCount: card.usageCount,
-          })),
-        },
-        limits: {
-          dailyLimit: user.dailyLimit,
-          monthlyLimit: user.monthlyLimit,
-          minTransaction: CONSTANTS.MIN_TRANSACTION_AMOUNT,
-          maxTransaction: CONSTANTS.MAX_TRANSACTION_AMOUNT,
-        },
-      });
-    } catch (error) {
-      next(error);
+
+    async processNFCPaymentDirect(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { cardUuid, amount, merchantId, terminalId } = req.body;
+            const user = (req as any).user;
+
+            // Input validation
+            if (!cardUuid || !amount || !merchantId || !terminalId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Check if user has a wallet address
+            if (!user.walletAddress) {
+                user.walletAddress = "0xdefault_user_wallet_" + user._id;
+            }
+
+            // Find merchant by merchantId string
+            const merchant = await Merchant.findOne({ merchantId });
+            if (!merchant) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid merchant",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Generate transaction ID
+            const transactionId = uuidv4();
+
+            // Calculate gas fee
+            const gasFee = 0.001;
+            const totalAmount = amount + gasFee;
+
+            // Create transaction record
+            const transaction = await Transaction.create({
+                transactionId,
+                userId: user._id,
+                cardUuid,
+                txHash: "pending_" + transactionId,
+                type: "payment",
+                amount,
+                currency: "SUI",
+                status: "processing",
+                merchantId: (merchant as any)._id,
+                merchantName: merchant.merchantName,
+                terminalId,
+                fromAddress: user.walletAddress,
+                toAddress: merchant.walletAddress,
+                gasFee,
+                totalAmount,
+                metadata: {
+                    ipAddress: req.ip || req.connection.remoteAddress,
+                    userAgent: req.headers["user-agent"],
+                    timestamp: new Date(),
+                    merchantIdString: merchantId,
+                    terminalId,
+                },
+            });
+
+            // Process directly (like the successful test script)
+            const userWithKey = await User.findById(user._id).select(
+                "+encryptedPrivateKey"
+            );
+            if (!userWithKey || !userWithKey.encryptedPrivateKey) {
+                throw new Error("User wallet not configured");
+            }
+
+            // Process blockchain transaction directly
+            let keypair: Ed25519Keypair;
+            if (userWithKey.encryptedPrivateKey.startsWith("suiprivkey1")) {
+                keypair = Ed25519Keypair.fromSecretKey(
+                    userWithKey.encryptedPrivateKey
+                );
+            } else {
+                throw new Error("Private key format not supported");
+            }
+
+            const amountInMist = Math.floor(amount * 1_000_000_000);
+            const tx = new SuiTransaction();
+            tx.setSender(user.walletAddress);
+
+            const [paymentCoin] = tx.splitCoins(tx.gas, [
+                tx.pure.u64(amountInMist),
+            ]);
+            tx.transferObjects(
+                [paymentCoin],
+                tx.pure.address(merchant.walletAddress)
+            );
+            tx.setGasBudget(10000000);
+
+            const suiClient = getSuiClient();
+            const result = await suiClient.signAndExecuteTransaction({
+                transaction: tx,
+                signer: keypair,
+                options: {
+                    showEffects: true,
+                    showObjectChanges: true,
+                    showEvents: true,
+                },
+            });
+
+            await suiClient.waitForTransaction({
+                digest: result.digest,
+                options: { showEffects: true },
+            });
+
+            const actualGasFee =
+                Number(result.effects?.gasUsed?.computationCost || 0) /
+                1_000_000_000;
+
+            // Update transaction with success
+            transaction.status = "completed";
+            transaction.txHash = result.digest;
+            transaction.gasFee = actualGasFee;
+            transaction.totalAmount = amount + actualGasFee;
+            transaction.completedAt = new Date();
+            await transaction.save();
+
+            res.json({
+                success: true,
+                message: "Payment completed successfully",
+                transaction: {
+                    transactionId,
+                    txHash: result.digest,
+                    amount,
+                    gasFee: actualGasFee,
+                    totalAmount: amount + actualGasFee,
+                    status: "completed",
+                    explorerUrl: `https://suiscan.xyz/${process.env.SUI_NETWORK || "testnet"}/tx/${result.digest}`,
+                },
+            });
+        } catch (error) {
+            logger.error("Direct payment error:", error);
+            next(error);
+        }
     }
-  }
-  
-  async getTransactionReceipt(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { id } = req.params;
-      const user = (req as any).user;
-      const format = req.query.format as string || 'json';
-      
-      const transaction = await Transaction.findById(id)
-        .populate('merchantId', 'merchantName')
-        .populate('cardId', 'cardType cardNumber');
-      
-      if (!transaction) {
-        return res.status(404).json({
-          success: false,
-          error: 'Transaction not found',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      // Verify ownership
-      if (transaction.userId.toString() !== user.id) {
-        return res.status(403).json({
-          success: false,
-          error: 'Unauthorized to view this receipt',
-          code: ERROR_CODES.UNAUTHORIZED,
-        });
-      }
-      
-      const receipt = {
-        transactionId: transaction._id,
-        txHash: transaction.txHash,
-        status: transaction.status,
-        amount: transaction.amount,
-        gasFee: transaction.gasFee,
-        totalAmount: transaction.totalAmount,
-        currency: transaction.currency,
-        merchant: transaction.merchantName,
-        card: transaction.cardId ? {
-          type: (transaction.cardId as any).cardType,
-          last4: (transaction.cardId as any).cardNumber?.slice(-4),
-        } : null,
-        timestamps: {
-          created: transaction.createdAt,
-          completed: transaction.completedAt,
-        },
-        blockchain: transaction.txHash ? {
-          network: 'Sui Testnet',
-          explorerUrl: `https://suiscan.xyz/testnet/tx/${transaction.txHash}`,
-        } : null,
-        metadata: transaction.metadata,
-      };
-      
-      if (format === 'pdf') {
-        // TODO: Generate PDF receipt
-        return res.status(501).json({
-          success: false,
-          error: 'PDF format not yet implemented',
-        });
-      }
-      
-      res.json({
-        success: true,
-        receipt,
-      });
-    } catch (error) {
-      next(error);
+
+    async processPayment(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { cardUuid, amount, merchantId, pin } = req.body;
+            const user = (req as any).user;
+
+            // Input validation
+            if (!cardUuid || !amount || !merchantId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // PIN verification for high-value transactions
+            if (amount > CONSTANTS.DAILY_AMOUNT_LIMIT / 10) {
+                // 10% of daily limit
+                if (!pin) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "PIN required for high-value transactions",
+                        code: ERROR_CODES.AUTH_FAILED,
+                    });
+                }
+
+                // Verify PIN (implement PIN verification logic)
+                const isPinValid = await this.verifyUserPin(user.id, pin);
+                if (!isPinValid) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Invalid PIN",
+                        code: ERROR_CODES.AUTH_FAILED,
+                    });
+                }
+            }
+
+            // Rate limiting check
+            const rateLimitKey = `payment_rate_${user.id}`;
+            const recentTransactions = (await getCached(rateLimitKey)) || 0;
+
+            if (recentTransactions >= CONSTANTS.DAILY_TRANSACTION_LIMIT) {
+                return res.status(429).json({
+                    success: false,
+                    error: "Daily transaction limit exceeded",
+                    code: ERROR_CODES.LIMIT_EXCEEDED,
+                });
+            }
+
+            // Prepare transaction metadata
+            const metadata = {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.headers["user-agent"],
+                device: req.headers["x-device-id"] as string,
+                location: req.headers["x-location"] as string,
+                timestamp: new Date().toISOString(),
+                apiVersion: "1.0",
+            };
+
+            logger.info(
+                `Processing payment: ${cardUuid} -> ${merchantId}, amount: ${amount}`,
+                {
+                    userId: user.id,
+                    metadata,
+                }
+            );
+
+            // Process payment through service
+            const transaction = await paymentService.processPayment(
+                cardUuid,
+                amount,
+                merchantId,
+                metadata
+            );
+
+            // Update rate limiting counter
+            await setCached(rateLimitKey, recentTransactions + 1, 24 * 60 * 60); // 24 hours TTL
+
+            // Log successful transaction
+            logger.info(`Payment processed successfully: ${transaction._id}`, {
+                txId: transaction._id,
+                txHash: transaction.txHash,
+                userId: user.id,
+                amount,
+                status: transaction.status,
+            });
+
+            res.json({
+                success: true,
+                message: "Payment processed successfully",
+                transaction: {
+                    id: transaction._id,
+                    txHash: transaction.txHash,
+                    amount: transaction.amount,
+                    totalAmount: transaction.totalAmount,
+                    gasFee: transaction.gasFee,
+                    status: transaction.status,
+                    merchantName: transaction.merchantName,
+                    timestamp: transaction.createdAt,
+                    estimatedConfirmationTime: "2-5 seconds",
+                },
+                receipt: {
+                    transactionId: transaction._id,
+                    amount: transaction.amount,
+                    currency: transaction.currency,
+                    merchant: transaction.merchantName,
+                    cardLast4: cardUuid.slice(-4),
+                    timestamp: transaction.createdAt,
+                    status: transaction.status,
+                },
+            });
+        } catch (error) {
+            logger.error("Payment processing error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
+                stack: error instanceof Error ? error.stack : undefined,
+                userId: (req as any).user?.id,
+                body: req.body,
+            });
+
+            // Handle specific error types
+            if (error instanceof Error) {
+                if (error.message.includes("insufficient balance")) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Insufficient balance",
+                        code: ERROR_CODES.INSUFFICIENT_BALANCE,
+                    });
+                }
+
+                if (error.message.includes("limit exceeded")) {
+                    return res.status(400).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.LIMIT_EXCEEDED,
+                    });
+                }
+
+                if (error.message.includes("Card")) {
+                    return res.status(400).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.INVALID_CARD,
+                    });
+                }
+            }
+
+            next(error);
+        }
     }
-  }
-  
-  async validateTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
-    try {
-      const { txHash } = req.params;
-      
-      if (!txHash) {
-        return res.status(400).json({
-          success: false,
-          error: 'Transaction hash is required',
-          code: ERROR_CODES.VALIDATION_ERROR,
-        });
-      }
-      
-      try {
-        // Get transaction from blockchain
-        const blockchainTx = await getSuiClient().getTransactionBlock({
-          digest: txHash,
-          options: {
-            showEffects: true,
-            showInput: true,
-            showObjectChanges: true,
-          },
-        });
-        
-        // Check our database
-        const dbTransaction = await Transaction.findOne({ txHash });
-        
-        res.json({
-          success: true,
-          validation: {
-            exists: !!blockchainTx,
-            inDatabase: !!dbTransaction,
-            status: blockchainTx?.effects?.status?.status,
-            timestamp: blockchainTx?.timestampMs,
-            gasUsed: blockchainTx?.effects?.gasUsed,
-            explorerUrl: `https://suiscan.xyz/testnet/tx/${txHash}`,
-          },
-          transaction: dbTransaction ? {
-            id: dbTransaction._id,
-            status: dbTransaction.status,
-            amount: dbTransaction.amount,
-          } : null,
-        });
-        
-      } catch (blockchainError) {
-        res.json({
-          success: true,
-          validation: {
-            exists: false,
-            error: 'Transaction not found on blockchain',
-          },
-        });
-      }
-    } catch (error) {
-      next(error);
+
+    private async verifyUserPin(userId: string, pin: string): Promise<boolean> {
+        try {
+            const user = await User.findById(userId).select("+pinHash");
+            if (!user) {
+                return false;
+            }
+
+            // Use the comparePin method from User model
+            return await user.comparePin!(pin);
+        } catch (error) {
+            logger.error("PIN verification error:", error);
+            return false;
+        }
     }
-  }
+
+    async signTransaction(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { transactionBytes, cardUuid, amount } = req.body;
+            const user = (req as any).user;
+
+            // Input validation
+            if (!transactionBytes || !cardUuid) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: transactionBytes, cardUuid",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Verify card ownership
+            const card = await Card.findOne({ cardUuid, userId: user.id });
+            if (!card || !card.isActive) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Card not found or not active",
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
+
+            // Create pending transaction record for tracking
+            const pendingTransaction = await Transaction.create({
+                userId: user._id,
+                cardId: card._id,
+                cardUuid,
+                type: "payment",
+                amount: amount || 0,
+                currency: "SUI",
+                status: "pending",
+                fromAddress: user.walletAddress,
+                toAddress: "", // Will be filled when merchant is known
+                metadata: {
+                    signedAt: new Date(),
+                    ipAddress: req.ip,
+                    userAgent: req.headers["user-agent"],
+                },
+            });
+
+            try {
+                // Import required Sui modules
+                const { Transaction } = require("@mysten/sui/transactions");
+                const {
+                    Ed25519Keypair,
+                } = require("@mysten/sui/keypairs/ed25519");
+                const {
+                    decryptPrivateKey,
+                } = require("../services/encryption.service");
+
+                // Get user's private key
+                const userWithKey = await User.findById(user.id).select(
+                    "+encryptedPrivateKey"
+                );
+                if (!userWithKey || !userWithKey.encryptedPrivateKey) {
+                    throw new Error("User private key not found");
+                }
+
+                // Decrypt and create keypair
+                const privateKey = decryptPrivateKey(
+                    userWithKey.encryptedPrivateKey
+                );
+                const keypair = Ed25519Keypair.fromSecretKey(
+                    Buffer.from(privateKey, "base64")
+                );
+
+                // Parse transaction bytes
+                const transactionBytesArray = Array.isArray(transactionBytes)
+                    ? new Uint8Array(transactionBytes)
+                    : new Uint8Array(Buffer.from(transactionBytes, "base64"));
+
+                // Deserialize transaction
+                const tx = Transaction.from(transactionBytesArray);
+
+                // Verify transaction sender matches user wallet
+                if (tx.getSender() !== user.walletAddress) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Transaction sender does not match user wallet",
+                        code: ERROR_CODES.AUTH_FAILED,
+                    });
+                }
+
+                // Sign the transaction
+                const transactionBytesForSigning = await tx.build({
+                    client: getSuiClient(),
+                });
+                const signature = await keypair.signTransaction(
+                    transactionBytesForSigning
+                );
+
+                // Update pending transaction with signature info
+                pendingTransaction.status = "processing";
+                pendingTransaction.metadata = {
+                    ...pendingTransaction.metadata,
+                    signatureGenerated: true,
+                    signedBytes: transactionBytes,
+                };
+                await pendingTransaction.save();
+
+                logger.info(`Transaction signed successfully`, {
+                    transactionId: pendingTransaction._id,
+                    userId: user.id,
+                    cardUuid,
+                });
+
+                res.json({
+                    success: true,
+                    message: "Transaction signed successfully",
+                    signature: signature.signature,
+                    transactionId: pendingTransaction._id,
+                    data: {
+                        signature: signature.signature,
+                        publicKey: keypair.getPublicKey().toSuiAddress(),
+                        transactionBytes: Buffer.from(
+                            transactionBytesForSigning
+                        ).toString("base64"),
+                    },
+                });
+            } catch (signingError) {
+                // Update transaction status to failed
+                pendingTransaction.status = "failed";
+                pendingTransaction.failureReason =
+                    signingError instanceof Error
+                        ? signingError.message
+                        : "Signing failed";
+                await pendingTransaction.save();
+
+                throw signingError;
+            }
+        } catch (error) {
+            logger.error("Transaction signing error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
+                userId: (req as any).user?.id,
+                cardUuid: req.body.cardUuid,
+            });
+
+            if (error instanceof Error && error.message.includes("decrypt")) {
+                return res.status(500).json({
+                    success: false,
+                    error: "Unable to access wallet keys",
+                    code: ERROR_CODES.INTERNAL_ERROR,
+                });
+            }
+
+            next(error);
+        }
+    }
+
+    async completePayment(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { txHash, transactionId } = req.body;
+            const user = (req as any).user;
+
+            // Input validation
+            if (!txHash || (!transactionId && !req.body.cardUuid)) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: txHash and (transactionId or cardUuid)",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Find the pending transaction
+            let transaction;
+            if (transactionId) {
+                transaction = await Transaction.findById(transactionId);
+            } else {
+                transaction = await Transaction.findOne({
+                    cardUuid: req.body.cardUuid,
+                    userId: user.id,
+                    status: "processing",
+                }).sort({ createdAt: -1 });
+            }
+
+            if (!transaction) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Transaction not found or not in processing state",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Verify transaction ownership
+            if (transaction.userId.toString() !== user.id) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized to complete this transaction",
+                    code: ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+
+            try {
+                // Verify transaction on blockchain
+                const blockchainTx = await getSuiClient().waitForTransaction({
+                    digest: txHash,
+                    options: {
+                        showEffects: true,
+                        showObjectChanges: true,
+                        showBalanceChanges: true,
+                    },
+                });
+
+                // Check if transaction was successful on blockchain
+                const isSuccess =
+                    blockchainTx.effects?.status?.status === "success";
+
+                if (!isSuccess) {
+                    transaction.status = "failed";
+                    transaction.failureReason = "Blockchain transaction failed";
+                    await transaction.save();
+
+                    return res.status(400).json({
+                        success: false,
+                        error: "Transaction failed on blockchain",
+                        code: ERROR_CODES.TRANSACTION_FAILED,
+                        details: blockchainTx.effects?.status,
+                    });
+                }
+
+                // Extract gas fee from blockchain transaction
+                const gasFeeFromChain = blockchainTx.effects?.gasUsed
+                    ? parseInt(blockchainTx.effects.gasUsed.computationCost) +
+                      parseInt(blockchainTx.effects.gasUsed.storageCost)
+                    : 0;
+
+                // Update transaction with completion details
+                transaction.status = "completed";
+                transaction.txHash = txHash;
+                transaction.gasFee = gasFeeFromChain / 1_000_000_000; // Convert MIST to SUI
+                transaction.totalAmount =
+                    transaction.amount + transaction.gasFee;
+                transaction.completedAt = new Date();
+                transaction.metadata = {
+                    ...transaction.metadata,
+                    blockchainConfirmed: true,
+                    confirmationTime: new Date(),
+                    gasUsed: blockchainTx.effects?.gasUsed,
+                    balanceChanges: blockchainTx.balanceChanges,
+                };
+
+                await transaction.save();
+
+                // Update card usage statistics
+                if (transaction.cardId) {
+                    await Card.findByIdAndUpdate(transaction.cardId, {
+                        $inc: {
+                            dailySpent: transaction.amount,
+                            monthlySpent: transaction.amount,
+                            usageCount: 1,
+                        },
+                        lastUsed: new Date(),
+                    });
+                }
+
+                // Update merchant statistics if applicable
+                if (transaction.merchantId) {
+                    await Merchant.findByIdAndUpdate(transaction.merchantId, {
+                        $inc: {
+                            totalTransactions: 1,
+                            totalVolume: transaction.amount,
+                        },
+                        lastTransactionAt: new Date(),
+                    });
+                }
+
+                // Cache the completed transaction
+                await setCached(
+                    `completed_tx:${txHash}`,
+                    transaction,
+                    CONSTANTS.CACHE_TTL.TRANSACTION
+                );
+
+                logger.info(`Payment completed successfully`, {
+                    transactionId: transaction._id,
+                    txHash,
+                    userId: user.id,
+                    amount: transaction.amount,
+                    gasFee: transaction.gasFee,
+                });
+
+                res.json({
+                    success: true,
+                    message: "Payment completed successfully",
+                    transaction: {
+                        id: transaction._id,
+                        txHash: transaction.txHash,
+                        amount: transaction.amount,
+                        gasFee: transaction.gasFee,
+                        totalAmount: transaction.totalAmount,
+                        status: transaction.status,
+                        completedAt: transaction.completedAt,
+                        merchantName: transaction.merchantName,
+                    },
+                    receipt: {
+                        transactionId: transaction._id,
+                        txHash: transaction.txHash,
+                        amount: transaction.amount,
+                        currency: transaction.currency,
+                        gasFee: transaction.gasFee,
+                        totalAmount: transaction.totalAmount,
+                        merchant: transaction.merchantName,
+                        timestamp: transaction.completedAt,
+                        status: "completed",
+                    },
+                    blockchain: {
+                        confirmed: true,
+                        confirmationTime: blockchainTx.timestampMs,
+                        gasUsed: blockchainTx.effects?.gasUsed,
+                        explorerUrl: `https://suiscan.xyz/testnet/tx/${txHash}`,
+                    },
+                });
+            } catch (blockchainError) {
+                // Update transaction as failed
+                transaction.status = "failed";
+                transaction.failureReason =
+                    blockchainError instanceof Error
+                        ? blockchainError.message
+                        : "Blockchain verification failed";
+                await transaction.save();
+
+                logger.error("Blockchain verification failed:", {
+                    error: blockchainError,
+                    txHash,
+                    transactionId: transaction._id,
+                });
+
+                return res.status(400).json({
+                    success: false,
+                    error: "Unable to verify transaction on blockchain",
+                    code: ERROR_CODES.BLOCKCHAIN_ERROR,
+                });
+            }
+        } catch (error) {
+            logger.error("Payment completion error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
+                userId: (req as any).user?.id,
+                body: req.body,
+            });
+            next(error);
+        }
+    }
+
+    async getTransactionHistory(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const userId = (req as any).user.id;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = Math.min(
+                parseInt(req.query.limit as string) ||
+                    CONSTANTS.DEFAULT_PAGE_SIZE,
+                CONSTANTS.MAX_PAGE_SIZE
+            );
+
+            const result = await paymentService.getTransactionHistory(
+                userId,
+                page,
+                limit
+            );
+
+            res.json({
+                success: true,
+                ...result,
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getTransaction(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const transaction = await paymentService.getTransactionById(id);
+
+            if (!transaction) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Transaction not found",
+                });
+            }
+
+            res.json({
+                success: true,
+                transaction,
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async refundTransaction(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const { reason } = req.body;
+
+            const transaction = await paymentService.refundTransaction(
+                id,
+                reason
+            );
+
+            res.json({
+                success: true,
+                transaction,
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getPaymentStats(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const userId = (req as any).user.id;
+            const period = (req.query.period as string) || "month";
+            const cardUuid = req.query.cardUuid as string;
+
+            // Use service to get payment stats (delegate the heavy logic to service)
+            const stats = await paymentService.getPaymentStats(
+                userId,
+                period,
+                cardUuid
+            );
+
+            res.json({
+                success: true,
+                stats,
+            });
+        } catch (error) {
+            logger.error("Payment stats error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
+                userId: (req as any).user?.id,
+                period: req.query.period,
+            });
+
+            if (
+                error instanceof Error &&
+                error.message.includes("Invalid period")
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    error: error.message,
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            next(error);
+        }
+    }
+    // Additional utility methods
+
+    async cancelPayment(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const { reason } = req.body;
+            const user = (req as any).user;
+
+            // Use service to cancel payment
+            const transaction = await paymentService.cancelTransaction(
+                id,
+                user.id,
+                reason
+            );
+
+            res.json({
+                success: true,
+                message: "Transaction cancelled successfully",
+                transaction: {
+                    id: transaction._id,
+                    status: transaction.status,
+                    cancelledAt: transaction.updatedAt,
+                },
+            });
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("not found")) {
+                    return res.status(404).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.VALIDATION_ERROR,
+                    });
+                }
+                if (error.message.includes("Unauthorized")) {
+                    return res.status(403).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.UNAUTHORIZED,
+                    });
+                }
+                if (error.message.includes("Cannot cancel")) {
+                    return res.status(400).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.VALIDATION_ERROR,
+                    });
+                }
+            }
+            next(error);
+        }
+    }
+
+    // Merchant creates a QR payment request (no user yet)
+    async createMerchantPaymentRequest(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { amount, description } = req.body as {
+                amount: number;
+                description?: string;
+            };
+            const merchantAuth = (req as any).user; // Using generic auth with role merchant
+
+            // Validate merchant identity
+            const merchant =
+                (await Merchant.findOne({
+                    merchantId: merchantAuth?.merchantId,
+                })) || (await Merchant.findById(merchantAuth?.id));
+            if (!merchant || !merchant.isActive) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized merchant",
+                    code: ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+
+            // Create a request record using Transaction model
+            const request = await Transaction.create({
+                type: "payment",
+                amount,
+                currency: "SUI",
+                status: "requested",
+                merchantId: merchant._id,
+                merchantName: merchant.merchantName,
+                metadata: {
+                    request: true,
+                    description,
+                    createdAt: new Date(),
+                },
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: "Merchant payment request created",
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    qrPayload: {
+                        requestId: request._id,
+                        amount: request.amount,
+                        merchantId: merchant.merchantId,
+                    },
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    // Get merchant payment request status
+    async getMerchantPaymentRequest(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const request = await Transaction.findById(id);
+            if (!request) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Request not found",
+                });
+            }
+
+            return res.json({
+                success: true,
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    merchantName: request.merchantName,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async retryPayment(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const user = (req as any).user;
+
+            // Use service to retry payment
+            const result = await paymentService.retryTransaction(id, user.id);
+
+            res.json({
+                success: true,
+                message: "Payment retry initiated",
+                originalTransactionId: id,
+                newTransaction: {
+                    id: result.newTransaction._id,
+                    status: result.newTransaction.status,
+                    amount: result.newTransaction.amount,
+                },
+            });
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.message.includes("not found")) {
+                    return res.status(404).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.VALIDATION_ERROR,
+                    });
+                }
+                if (error.message.includes("Unauthorized")) {
+                    return res.status(403).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.UNAUTHORIZED,
+                    });
+                }
+                if (error.message.includes("Only failed")) {
+                    return res.status(400).json({
+                        success: false,
+                        error: error.message,
+                        code: ERROR_CODES.VALIDATION_ERROR,
+                    });
+                }
+            }
+            next(error);
+        }
+    }
+
+    async getPaymentMethods(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const user = (req as any).user;
+
+            // Get user's cards
+            const cards = await Card.find({
+                userId: user.id,
+                isActive: true,
+            }).select(
+                "cardUuid cardType cardNumber isActive isPrimary lastUsed usageCount"
+            );
+
+            // Get wallet balance
+            let walletBalance = 0;
+            try {
+                const balance = await getSuiClient().getBalance({
+                    owner: user.walletAddress,
+                    coinType: "0x2::sui::SUI",
+                });
+                walletBalance =
+                    parseFloat(balance.totalBalance) / 1_000_000_000;
+            } catch (error) {
+                logger.warn("Unable to fetch wallet balance", {
+                    userId: user.id,
+                });
+            }
+
+            res.json({
+                success: true,
+                paymentMethods: {
+                    wallet: {
+                        address: user.walletAddress,
+                        balance: walletBalance,
+                        currency: "SUI",
+                    },
+                    cards: cards.map((card) => ({
+                        uuid: card.cardUuid,
+                        type: card.cardType,
+                        last4: card.cardNumber.slice(-4),
+                        isActive: card.isActive,
+                        isPrimary: card.isPrimary,
+                        lastUsed: card.lastUsed,
+                        usageCount: card.usageCount,
+                    })),
+                },
+                limits: {
+                    dailyLimit: user.dailyLimit,
+                    monthlyLimit: user.monthlyLimit,
+                    minTransaction: CONSTANTS.MIN_TRANSACTION_AMOUNT,
+                    maxTransaction: CONSTANTS.MAX_TRANSACTION_AMOUNT,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getTransactionReceipt(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+            const user = (req as any).user;
+            const format = (req.query.format as string) || "json";
+
+            const transaction = await Transaction.findById(id)
+                .populate("merchantId", "merchantName")
+                .populate("cardId", "cardType cardNumber");
+
+            if (!transaction) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Transaction not found",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            // Verify ownership
+            if (transaction.userId.toString() !== user.id) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized to view this receipt",
+                    code: ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+
+            const receipt = {
+                transactionId: transaction._id,
+                txHash: transaction.txHash,
+                status: transaction.status,
+                amount: transaction.amount,
+                gasFee: transaction.gasFee,
+                totalAmount: transaction.totalAmount,
+                currency: transaction.currency,
+                merchant: transaction.merchantName,
+                card: transaction.cardId
+                    ? {
+                          type: (transaction.cardId as any).cardType,
+                          last4: (transaction.cardId as any).cardNumber?.slice(
+                              -4
+                          ),
+                      }
+                    : null,
+                timestamps: {
+                    created: transaction.createdAt,
+                    completed: transaction.completedAt,
+                },
+                blockchain: transaction.txHash
+                    ? {
+                          network: "Sui Testnet",
+                          explorerUrl: `https://suiscan.xyz/testnet/tx/${transaction.txHash}`,
+                      }
+                    : null,
+                metadata: transaction.metadata,
+            };
+
+            if (format === "pdf") {
+                // TODO: Generate PDF receipt
+                return res.status(501).json({
+                    success: false,
+                    error: "PDF format not yet implemented",
+                });
+            }
+
+            res.json({
+                success: true,
+                receipt,
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async validateTransaction(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { txHash } = req.params;
+
+            if (!txHash) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Transaction hash is required",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            try {
+                // Get transaction from blockchain
+                const blockchainTx = await getSuiClient().getTransactionBlock({
+                    digest: txHash,
+                    options: {
+                        showEffects: true,
+                        showInput: true,
+                        showObjectChanges: true,
+                    },
+                });
+
+                // Check our database
+                const dbTransaction = await Transaction.findOne({ txHash });
+
+                res.json({
+                    success: true,
+                    validation: {
+                        exists: !!blockchainTx,
+                        inDatabase: !!dbTransaction,
+                        status: blockchainTx?.effects?.status?.status,
+                        timestamp: blockchainTx?.timestampMs,
+                        gasUsed: blockchainTx?.effects?.gasUsed,
+                        explorerUrl: `https://suiscan.xyz/testnet/tx/${txHash}`,
+                    },
+                    transaction: dbTransaction
+                        ? {
+                              id: dbTransaction._id,
+                              status: dbTransaction.status,
+                              amount: dbTransaction.amount,
+                          }
+                        : null,
+                });
+            } catch (blockchainError) {
+                res.json({
+                    success: true,
+                    validation: {
+                        exists: false,
+                        error: "Transaction not found on blockchain",
+                    },
+                });
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
 }
 
 export const paymentController = new PaymentController();
