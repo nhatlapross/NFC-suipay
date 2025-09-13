@@ -6,7 +6,6 @@ import cardRoutes from './card.routes';
 import userRoutes from './user.routes';
 import merchantRoutes from './merchant.routes';
 import adminRoutes from './admin.routes';
-import posRoutes from './pos.routes';
 
 const router = Router();
 
@@ -25,7 +24,6 @@ router.get('/', (_req, res) => {
       user: '/api/user',
       merchant: '/api/merchant',
       admin: '/api/admin',
-      pos: '/api/pos',
     },
   });
 });
@@ -38,7 +36,6 @@ router.use('/card', cardRoutes);
 router.use('/user', userRoutes);
 router.use('/merchant', merchantRoutes);
 router.use('/admin', adminRoutes);
-router.use('/pos', posRoutes);
 
 // 404 handler for API routes
 router.use('*', (_req, res) => {

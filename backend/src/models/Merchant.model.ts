@@ -33,6 +33,24 @@ export interface IMerchant extends Document {
   totalTransactions: number;
   totalVolume: number;
   metadata?: Record<string, any>;
+  terminals?: Array<{
+    terminalId: string;
+    terminalName: string;
+    location: string;
+    terminalType: "MOBILE" | "FIXED" | "KIOSK" | "ONLINE";
+    features: string[];
+    isActive: boolean;
+    settings: {
+      maxAmount: number;
+      requireSignature: boolean;
+      requirePINAmount: number;
+      timeout: number;
+    };
+    createdAt: Date;
+    lastUsed?: Date;
+    updatedAt?: Date;
+    deactivatedAt?: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -110,6 +128,28 @@ const merchantSchema = new Schema<IMerchant>(
       min: 0,
       max: 100,
     },
+    terminals: [{
+      terminalId: { type: String, required: true },
+      terminalName: { type: String, required: true },
+      location: { type: String, default: "" },
+      terminalType: {
+        type: String,
+        enum: ["MOBILE", "FIXED", "KIOSK", "ONLINE"],
+        default: "FIXED"
+      },
+      features: [{ type: String }],
+      isActive: { type: Boolean, default: true },
+      settings: {
+        maxAmount: { type: Number, default: 5000000 },
+        requireSignature: { type: Boolean, default: false },
+        requirePINAmount: { type: Number, default: 50000 },
+        timeout: { type: Number, default: 300 }
+      },
+      createdAt: { type: Date, default: Date.now },
+      lastUsed: Date,
+      updatedAt: Date,
+      deactivatedAt: Date
+    }],
     settlementPeriod: {
       type: String,
       enum: ['daily', 'weekly', 'monthly'],
