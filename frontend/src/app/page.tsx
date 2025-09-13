@@ -1,82 +1,159 @@
-'use client';
+"use client";
+import BottomNavigation from "@/components/BottomNavigation";
+import HomeScreen from "@/components/screens/HomeScreen";
+import ProfileScreen from "@/components/screens/ProfileScreen";
+import SettingsScreen from "@/components/screens/SettingsScreen";
+import TransactionsScreen from "@/components/screens/TransactionsScreen";
+import { useEffect, useState } from "react";
+import { getUserCardsAPI, createCardAPI } from "@/lib/api-client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { CreditCard, Shield, Zap, DollarSign } from 'lucide-react';
-import Link from 'next/link';
+export default function Home() {
+    const [activeTab, setActiveTab] = useState("home");
+    const [showBalance, setShowBalance] = useState(true);
+    const [hasCard, setHasCard] = useState<boolean | null>(null);
+    const [creating, setCreating] = useState(false);
+    const [cardInfo, setCardInfo] = useState<any | null>(null);
 
-export default function HomePage() {
-  const router = useRouter();
+    const loadCards = async () => {
+        try {
+            console.log('🔄 [Home] Fetching user cards...');
+            const res: any = await getUserCardsAPI();
+            const list = res?.cards || res?.data?.cards || res?.data || [];
+            const has = Array.isArray(list) && list.length > 0;
+            setHasCard(has);
+            if (has) {
+                console.log('📋 [Home] Cards fetched:', list);
+                console.log('📋 [Home] First card details:', {
+                    id: list[0].id,
+                    cardUuid: list[0].cardUuid,
+                    isActive: list[0].isActive,
+                    blockedAt: list[0].blockedAt,
+                    blockedReason: list[0].blockedReason,
+                    cardType: list[0].cardType
+                });
+                setCardInfo(list[0]);
+            } else {
+                console.log('❌ [Home] No cards found');
+            }
+        } catch {
+            console.error('💥 [Home] Failed to fetch cards');
+            setHasCard(false);
+        }
+    };
 
-  return (
-    <div className="max-w-6xl mx-auto">
-      {/* Hero Section */}
-      <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
-          NFC Payment với Sui Blockchain
-        </h1>
-        <p className="text-xl text-gray-600 mb-8">
-          Thanh toán nhanh chóng, an toàn và chi phí thấp
-        </p>
-        <div className="flex justify-center gap-4">
-          <Link href="/payment">
-            <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all">
-              Bắt đầu thanh toán
-            </button>
-          </Link>
-          <Link href="/dashboard">
-            <button className="px-8 py-4 bg-white text-gray-800 rounded-lg font-semibold hover:shadow-lg border border-gray-200">
-              Dashboard
-            </button>
-          </Link>
-        </div>
-      </div>
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            if (mounted) {
+                await loadCards();
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
-      {/* Features */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        <div className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all">
-          <CreditCard className="w-12 h-12 text-blue-600 mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Thanh toán NFC</h3>
-          <p className="text-gray-600">Chạm thẻ để thanh toán nhanh chóng</p>
-        </div>
-        
-        <div className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all">
-          <Shield className="w-12 h-12 text-green-600 mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Bảo mật cao</h3>
-          <p className="text-gray-600">Private key được mã hóa an toàn</p>
-        </div>
-        
-        <div className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all">
-          <Zap className="w-12 h-12 text-yellow-600 mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Siêu nhanh</h3>
-          <p className="text-gray-600">Giao dịch hoàn tất trong 2 giây</p>
-        </div>
-        
-        <div className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all">
-          <DollarSign className="w-12 h-12 text-purple-600 mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Chi phí thấp</h3>
-          <p className="text-gray-600">Gas fee chỉ ~0.001 SUI</p>
-        </div>
-      </div>
+    // Listen for card changes from other components
+    useEffect(() => {
+        const handleCardChange = () => {
+            console.log('🔄 [Home] Card change detected, refreshing...');
+            loadCards();
+        };
 
-      {/* Stats */}
-      <div className="bg-white rounded-2xl p-8 shadow-xl">
-        <h2 className="text-2xl font-bold mb-6 text-center">Thống kê hệ thống</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center">
-            <p className="text-3xl font-bold text-blue-600">1,234</p>
-            <p className="text-gray-600">Người dùng</p>
-          </div>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-green-600">5,678</p>
-            <p className="text-gray-600">Giao dịch</p>
-          </div>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-purple-600">12,345 SUI</p>
-            <p className="text-gray-600">Tổng khối lượng</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+        // Listen for custom events
+        window.addEventListener('cardBlocked', handleCardChange);
+        window.addEventListener('cardUnblocked', handleCardChange);
+
+        return () => {
+            window.removeEventListener('cardBlocked', handleCardChange);
+            window.removeEventListener('cardUnblocked', handleCardChange);
+        };
+    }, []);
+
+    const handleCreateQuickCard = async () => {
+        try {
+            setCreating(true);
+            const res: any = await createCardAPI({
+                cardType: "virtual",
+                cardName: "My NFC",
+                limits: { daily: 300, monthly: 2000 },
+            });
+            console.log('[Home] createCardAPI response:', res);
+            if (res?.success) {
+                // Refetch cards to get latest info of created card
+                const updated: any = await getUserCardsAPI();
+                console.log('[Home] Refetched cards after create:', updated);
+                const list = updated?.cards || updated?.data?.cards || updated?.data || [];
+                const has = Array.isArray(list) && list.length > 0;
+                setHasCard(has);
+                if (has) setCardInfo(list[0]);
+            } else if (res?.card || res?.data) {
+                setHasCard(true);
+                setCardInfo(res.card || res.data);
+            }
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const renderActiveScreen = () => {
+        switch (activeTab) {
+            case "home":
+                if (!hasCard) {
+                    return (
+                        <div className="min-h-[60vh] flex items-center justify-center p-6">
+                            <div className="max-w-md w-full border-2 border-black p-6 text-center">
+                                <h1 className="text-xl font-mono font-bold mb-3">You don’t have an NFC card yet</h1>
+                                <p className="text-sm font-mono mb-6 opacity-80">Create a card to start using payment features.</p>
+                                <button
+                                    onClick={handleCreateQuickCard}
+                                    disabled={creating}
+                                    className="w-full py-3 bg-black text-white font-mono border-2 border-black disabled:opacity-60"
+                                >
+                                    {creating ? "Creating card..." : "Create card now"}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <HomeScreen
+                        showBalance={showBalance}
+                        onToggleBalance={() => setShowBalance(!showBalance)}
+                        card={cardInfo}
+                    />
+                );
+            case "transactions":
+                return <TransactionsScreen />;
+            case "settings":
+                return <SettingsScreen />;
+            case "profile":
+                return <ProfileScreen />;
+            default:
+                return (
+                    <HomeScreen
+                        showBalance={showBalance}
+                        onToggleBalance={() => setShowBalance(!showBalance)}
+                    />
+                );
+        }
+    };
+
+    if (hasCard === null) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-pulse text-sm">Loading...</div>
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <div className="pb-20 min-h-screen">{renderActiveScreen()}</div>
+            <BottomNavigation
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+            />
+        </>
+    );
 }

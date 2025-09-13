@@ -63,13 +63,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       console.log('No authenticated user, skipping balance refresh');
       return;
     }
+    const address = wallet?.address || user.walletAddress;
+    if (!address) {
+      console.warn('No wallet address available for balance refresh');
+      return;
+    }
     
     setLoading(true);
     try {
-      const response = await getWalletBalanceAPI();
+      const response = await getWalletBalanceAPI(address);
       if (response.success) {
         setWallet(prev => ({
-          address: response.wallet?.address || prev?.address || '',
+          address: response.wallet?.address || prev?.address || address || '',
           balance: parseFloat(response.balance.sui) / 1000000000, // Convert MIST to SUI
           tokens: response.balance.coins?.map((coin: any) => ({
             symbol: coin.type.includes('SUI') ? 'SUI' : 'UNKNOWN',

@@ -1,62 +1,86 @@
-import { body } from 'express-validator';
+import { body } from "express-validator";
 
 export const paymentValidators = {
-  validatePayment: [
-    body('cardUuid')
-      .notEmpty()
-      .isUUID()
-      .withMessage('Valid card UUID is required'),
-    body('amount')
-      .isFloat({ min: 0.01 })
-      .withMessage('Amount must be greater than 0.01'),
-    body('merchantId')
-      .notEmpty()
-      .withMessage('Merchant ID is required'),
-  ],
+    validatePayment: [
+        body("cardUuid")
+            .notEmpty()
+            .isUUID()
+            .withMessage("Valid card UUID is required"),
+        body("amount")
+            .isFloat({ min: 0.01 })
+            .withMessage("Amount must be greater than 0.01"),
+        body("merchantId").notEmpty().withMessage("Merchant ID is required"),
+    ],
 
-  processPayment: [
-    body('cardUuid')
-      .notEmpty()
-      .isUUID()
-      .withMessage('Valid card UUID is required'),
-    body('amount')
-      .isFloat({ min: 0.01 })
-      .withMessage('Amount must be greater than 0.01'),
-    body('merchantId')
-      .notEmpty()
-      .withMessage('Merchant ID is required'),
-    body('pin')
-      .optional()
-      .isLength({ min: 4, max: 4 })
-      .isNumeric()
-      .withMessage('PIN must be 4 digits'),
-  ],
+    processPayment: [
+        body("cardUuid")
+            .notEmpty()
+            .isUUID()
+            .withMessage("Valid card UUID is required"),
+        body("amount")
+            .isFloat({ min: 0.01 })
+            .withMessage("Amount must be greater than 0.01"),
+        body("merchantId").notEmpty().withMessage("Merchant ID is required"),
+        body("pin")
+            .optional()
+            .isLength({ min: 4, max: 4 })
+            .isNumeric()
+            .withMessage("PIN must be 4 digits"),
+    ],
 
-  signTransaction: [
-    body('transactionBytes')
-      .notEmpty()
-      .withMessage('Transaction bytes are required'),
-    body('cardUuid')
-      .notEmpty()
-      .isUUID()
-      .withMessage('Valid card UUID is required'),
-    body('amount')
-      .optional()
-      .isFloat({ min: 0 })
-      .withMessage('Amount must be a positive number'),
-  ],
+    createPaymentIntent: [
+        body("cardUuid")
+            .notEmpty()
+            .isUUID()
+            .withMessage("Valid card UUID is required"),
+        body("amount")
+            .isFloat({ min: 0.01 })
+            .withMessage("Amount must be greater than 0.01"),
+        body("merchantId").notEmpty().withMessage("Merchant ID is required"),
+    ],
 
-  completePayment: [
-    body('txHash')
-      .notEmpty()
-      .withMessage('Transaction hash is required'),
-    body('transactionId')
-      .optional()
-      .isMongoId()
-      .withMessage('Valid transaction ID required'),
-    body('cardUuid')
-      .optional()
-      .isUUID()
-      .withMessage('Valid card UUID required'),
-  ],
+    confirmPayment: [
+        body("pin")
+            .notEmpty()
+            .isLength({ min: 4, max: 4 })
+            .isNumeric()
+            .withMessage("PIN must be 4 digits"),
+    ],
+
+    signTransaction: [
+        body("transactionBytes")
+            .notEmpty()
+            .withMessage("Transaction bytes are required"),
+        body("cardUuid")
+            .notEmpty()
+            .isUUID()
+            .withMessage("Valid card UUID is required"),
+        body("amount")
+            .optional()
+            .isFloat({ min: 0 })
+            .withMessage("Amount must be a positive number"),
+    ],
+
+    completePayment: [
+        body("txHash").notEmpty().withMessage("Transaction hash is required"),
+        body("transactionId")
+            .optional()
+            .isMongoId()
+            .withMessage("Valid transaction ID required"),
+        body("cardUuid")
+            .optional()
+            .isUUID()
+            .withMessage("Valid card UUID required"),
+    ],
+
+    createMerchantRequest: [
+        body("amount")
+            .isFloat({ min: 0.01 })
+            .withMessage("Amount must be greater than 0.01"),
+        body("description")
+            .optional()
+            .isString()
+            .isLength({ max: 200 })
+            .withMessage("Description must be <= 200 chars"),
+    ],
 };
