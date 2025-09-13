@@ -548,10 +548,7 @@ class PaymentController {
         try {
             const { cardUuid, amount, merchantId, terminalId } = req.body;
             // const user = (req as any).user;
-            const card = await Card_model_1.Card.findOne({
-                uuid: cardUuid,
-                status: "active",
-            });
+            const card = await Card_model_1.Card.findOne({ uuid: cardUuid, isActive: true });
             if (!card) {
                 return res.status(400).json({
                     success: false,
