@@ -5,6 +5,9 @@ const allowedOrigins = [
   'http://localhost:3001',
   'https://localhost:3000',
   'https://localhost:3001',
+  // Mobile app local network
+  'http://192.168.1.3:3001',
+  'https://192.168.1.3:3001',
   // Production domains
   'https://nfc-suipay.onrender.com',
   // Add your frontend domain here when deployed
