@@ -6,6 +6,8 @@ import { ERROR_CODES } from '../config/constants';
 export interface AuthRequest extends Request {
   user?: any;
   token?: string;
+  params: any;
+  query: any;
 }
 
 export async function authenticate(
