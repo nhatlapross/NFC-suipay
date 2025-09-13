@@ -2,11 +2,14 @@ import cors from 'cors';
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://localhost:3001', 
+  'http://localhost:3001',
   'https://localhost:3000',
   'https://localhost:3001',
-  // Add production domains here
-];
+  // Production domains
+  'https://nfc-suipay.onrender.com',
+  // Add your frontend domain here when deployed
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
