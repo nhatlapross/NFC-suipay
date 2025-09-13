@@ -14,36 +14,47 @@ class MerchantController {
             if (!merchantInfo) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Merchant not found'
+                    error: "Merchant not found",
                 });
             }
             return res.json({
                 success: true,
-                data: merchantInfo
+                data: merchantInfo,
             });
         }
         catch (error) {
-            logger_1.default.error('Get public merchant info error:', error);
+            logger_1.default.error("Get public merchant info error:", error);
             next(error);
         }
     }
     async registerMerchant(req, res, next) {
         try {
-            const { merchantName, businessType, email, phoneNumber, address, bankAccount, walletAddress, webhookUrl, settlementPeriod } = req.body;
+            const { merchantName, businessType, email, phoneNumber, address, bankAccount, walletAddress, webhookUrl, settlementPeriod, } = req.body;
             // Validate required fields
-            if (!merchantName || !businessType || !email || !phoneNumber || !address || !walletAddress) {
+            if (!merchantName ||
+                !businessType ||
+                !email ||
+                !phoneNumber ||
+                !address ||
+                !walletAddress) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: merchantName, businessType, email, phoneNumber, address, walletAddress'
+                    error: "Missing required fields: merchantName, businessType, email, phoneNumber, address, walletAddress",
                 });
             }
             // Validate address structure
-            if (!address.street || !address.city || !address.state || !address.country || !address.postalCode) {
+            if (!address.street ||
+                !address.city ||
+                !address.state ||
+                !address.country ||
+                !address.postalCode) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Address must include street, city, state, country, and postalCode'
+                    error: "Address must include street, city, state, country, and postalCode",
                 });
             }
+            // Get user ID from authenticated user (if user is registering as merchant)
+            const userId = req.user?.id; // Assuming JWT auth middleware adds user to request
             const registrationData = {
                 merchantName,
                 businessType,
@@ -53,16 +64,17 @@ class MerchantController {
                 bankAccount,
                 walletAddress,
                 webhookUrl,
-                settlementPeriod: settlementPeriod || 'daily'
+                settlementPeriod: settlementPeriod || "daily",
             };
-            const result = await merchant_service_1.merchantService.registerMerchant(registrationData);
-            logger_1.default.info('Merchant registration successful', {
+            const result = await merchant_service_1.merchantService.registerMerchant(registrationData, userId);
+            logger_1.default.info("Merchant registration successful", {
                 merchantId: result.merchant.merchantId,
-                email: result.merchant.email
+                email: result.merchant.email,
+                userId: userId || "standalone",
             });
             return res.status(201).json({
                 success: true,
-                message: 'Merchant registered successfully',
+                message: "Merchant registered successfully",
                 data: {
                     merchantId: result.merchant.merchantId,
                     merchantName: result.merchant.merchantName,
@@ -75,24 +87,26 @@ class MerchantController {
                     apiKeys: {
                         publicKey: result.apiKeys.publicKey,
                         secretKey: result.apiKeys.secretKey,
-                        webhookSecret: result.apiKeys.webhookSecret
+                        webhookSecret: result.apiKeys.webhookSecret,
                     },
-                    createdAt: result.merchant.createdAt
-                }
+                    createdAt: result.merchant.createdAt,
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Merchant registration error:', error);
-            if (error instanceof Error && error.message.includes('already exists')) {
+            logger_1.default.error("Merchant registration error:", error);
+            if (error instanceof Error &&
+                error.message.includes("already exists")) {
                 return res.status(409).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
-            if (error instanceof Error && error.message.includes('Invalid wallet address')) {
+            if (error instanceof Error &&
+                error.message.includes("Invalid wallet address")) {
                 return res.status(400).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -105,14 +119,14 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const merchant = await merchant_service_1.merchantService.getMerchantById(merchantId);
             if (!merchant) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Merchant not found'
+                    error: "Merchant not found",
                 });
             }
             return res.json({
@@ -135,12 +149,12 @@ class MerchantController {
                     totalTransactions: merchant.totalTransactions,
                     totalVolume: merchant.totalVolume,
                     createdAt: merchant.createdAt,
-                    updatedAt: merchant.updatedAt
-                }
+                    updatedAt: merchant.updatedAt,
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Get merchant profile error:', error);
+            logger_1.default.error("Get merchant profile error:", error);
             next(error);
         }
     }
@@ -150,10 +164,10 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
-            const { merchantName, phoneNumber, address, bankAccount, webhookUrl, settlementPeriod } = req.body;
+            const { merchantName, phoneNumber, address, bankAccount, webhookUrl, settlementPeriod, } = req.body;
             const updateData = {};
             if (merchantName)
                 updateData.merchantName = merchantName;
@@ -170,7 +184,7 @@ class MerchantController {
             const updatedMerchant = await merchant_service_1.merchantService.updateMerchantProfile(merchantId, updateData);
             return res.json({
                 success: true,
-                message: 'Merchant profile updated successfully',
+                message: "Merchant profile updated successfully",
                 data: {
                     merchantId: updatedMerchant.merchantId,
                     merchantName: updatedMerchant.merchantName,
@@ -180,16 +194,17 @@ class MerchantController {
                     webhookUrl: updatedMerchant.webhookUrl,
                     settlementPeriod: updatedMerchant.settlementPeriod,
                     nextSettlementDate: updatedMerchant.nextSettlementDate,
-                    updatedAt: updatedMerchant.updatedAt
-                }
+                    updatedAt: updatedMerchant.updatedAt,
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Update merchant profile error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Update merchant profile error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -201,7 +216,7 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const { page = 1, limit = 20, status } = req.query;
@@ -210,7 +225,7 @@ class MerchantController {
             if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid pagination parameters. Page must be >= 1, limit must be 1-100'
+                    error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
                 });
             }
             const result = await merchant_service_1.merchantService.getMerchantPayments(merchantId, pageNum, limitNum, status);
@@ -222,17 +237,18 @@ class MerchantController {
                         current: pageNum,
                         total: result.pages,
                         count: result.total,
-                        limit: limitNum
-                    }
-                }
+                        limit: limitNum,
+                    },
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Get merchant payments error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Get merchant payments error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -244,21 +260,22 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const stats = await merchant_service_1.merchantService.getMerchantPaymentStats(merchantId);
             return res.json({
                 success: true,
-                data: stats
+                data: stats,
             });
         }
         catch (error) {
-            logger_1.default.error('Get merchant payment stats error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Get merchant payment stats error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -271,39 +288,40 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const { amount, reason } = req.body;
             const result = await merchant_service_1.merchantService.refundPayment(merchantId, paymentId, {
                 amount,
-                reason
+                reason,
             });
             return res.json({
                 success: true,
-                message: 'Payment refunded successfully',
-                data: result
+                message: "Payment refunded successfully",
+                data: result,
             });
         }
         catch (error) {
-            logger_1.default.error('Refund payment error:', error);
+            logger_1.default.error("Refund payment error:", error);
             if (error instanceof Error) {
-                if (error.message.includes('not found')) {
+                if (error.message.includes("not found")) {
                     return res.status(404).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('Cannot refund') || error.message.includes('already refunded')) {
+                if (error.message.includes("Cannot refund") ||
+                    error.message.includes("already refunded")) {
                     return res.status(400).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('not authorized')) {
+                if (error.message.includes("not authorized")) {
                     return res.status(403).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
             }
@@ -316,21 +334,22 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const settings = await merchant_service_1.merchantService.getMerchantSettings(merchantId);
             return res.json({
                 success: true,
-                data: settings
+                data: settings,
             });
         }
         catch (error) {
-            logger_1.default.error('Get merchant settings error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Get merchant settings error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -342,10 +361,10 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
-            const { notifications, paymentMethods, currency, autoSettlement, settlementPeriod, webhookUrl, apiCallbackUrl } = req.body;
+            const { notifications, paymentMethods, currency, autoSettlement, settlementPeriod, webhookUrl, apiCallbackUrl, } = req.body;
             const updatedSettings = await merchant_service_1.merchantService.updateMerchantSettings(merchantId, {
                 notifications,
                 paymentMethods,
@@ -353,20 +372,21 @@ class MerchantController {
                 autoSettlement,
                 settlementPeriod,
                 webhookUrl,
-                apiCallbackUrl
+                apiCallbackUrl,
             });
             return res.json({
                 success: true,
-                message: 'Merchant settings updated successfully',
-                data: updatedSettings
+                message: "Merchant settings updated successfully",
+                data: updatedSettings,
             });
         }
         catch (error) {
-            logger_1.default.error('Update merchant settings error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Update merchant settings error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -378,21 +398,22 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const webhooks = await merchant_service_1.merchantService.getWebhooks(merchantId);
             return res.json({
                 success: true,
-                data: webhooks
+                data: webhooks,
             });
         }
         catch (error) {
-            logger_1.default.error('Get webhooks error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Get webhooks error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -404,40 +425,44 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const { url, events, description } = req.body;
-            if (!url || !events || !Array.isArray(events) || events.length === 0) {
+            if (!url ||
+                !events ||
+                !Array.isArray(events) ||
+                events.length === 0) {
                 return res.status(400).json({
                     success: false,
-                    error: 'URL and events array are required'
+                    error: "URL and events array are required",
                 });
             }
             const webhook = await merchant_service_1.merchantService.createWebhook(merchantId, {
                 url,
                 events,
-                description
+                description,
             });
             return res.status(201).json({
                 success: true,
-                message: 'Webhook created successfully',
-                data: webhook
+                message: "Webhook created successfully",
+                data: webhook,
             });
         }
         catch (error) {
-            logger_1.default.error('Create webhook error:', error);
+            logger_1.default.error("Create webhook error:", error);
             if (error instanceof Error) {
-                if (error.message === 'Merchant not found') {
+                if (error.message === "Merchant not found") {
                     return res.status(404).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('already exists') || error.message.includes('duplicate')) {
+                if (error.message.includes("already exists") ||
+                    error.message.includes("duplicate")) {
                     return res.status(409).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
             }
@@ -451,7 +476,7 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const { url, events, description, isActive } = req.body;
@@ -459,27 +484,27 @@ class MerchantController {
                 url,
                 events,
                 description,
-                isActive
+                isActive,
             });
             return res.json({
                 success: true,
-                message: 'Webhook updated successfully',
-                data: updatedWebhook
+                message: "Webhook updated successfully",
+                data: updatedWebhook,
             });
         }
         catch (error) {
-            logger_1.default.error('Update webhook error:', error);
+            logger_1.default.error("Update webhook error:", error);
             if (error instanceof Error) {
-                if (error.message.includes('not found')) {
+                if (error.message.includes("not found")) {
                     return res.status(404).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('not authorized')) {
+                if (error.message.includes("not authorized")) {
                     return res.status(403).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
             }
@@ -493,28 +518,28 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             await merchant_service_1.merchantService.deleteWebhook(merchantId, webhookId);
             return res.json({
                 success: true,
-                message: 'Webhook deleted successfully'
+                message: "Webhook deleted successfully",
             });
         }
         catch (error) {
-            logger_1.default.error('Delete webhook error:', error);
+            logger_1.default.error("Delete webhook error:", error);
             if (error instanceof Error) {
-                if (error.message.includes('not found')) {
+                if (error.message.includes("not found")) {
                     return res.status(404).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('not authorized')) {
+                if (error.message.includes("not authorized")) {
                     return res.status(403).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
             }
@@ -527,21 +552,22 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const apiKeys = await merchant_service_1.merchantService.getApiKeys(merchantId);
             return res.json({
                 success: true,
-                data: apiKeys
+                data: apiKeys,
             });
         }
         catch (error) {
-            logger_1.default.error('Get API keys error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Get API keys error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -553,14 +579,14 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             const { name, permissions, rateLimit, ipWhitelist, expiresIn } = req.body;
             if (!name) {
                 return res.status(400).json({
                     success: false,
-                    error: 'API key name is required'
+                    error: "API key name is required",
                 });
             }
             const apiKeyResult = await merchant_service_1.merchantService.createApiKey(merchantId, {
@@ -568,11 +594,11 @@ class MerchantController {
                 permissions,
                 rateLimit,
                 ipWhitelist,
-                expiresIn
+                expiresIn,
             });
             return res.status(201).json({
                 success: true,
-                message: 'API key created successfully',
+                message: "API key created successfully",
                 data: {
                     keyId: apiKeyResult.keyId,
                     name: apiKeyResult.name,
@@ -582,23 +608,23 @@ class MerchantController {
                     rateLimit: apiKeyResult.rateLimit,
                     ipWhitelist: apiKeyResult.ipWhitelist,
                     expiresAt: apiKeyResult.expiresAt,
-                    createdAt: apiKeyResult.createdAt
-                }
+                    createdAt: apiKeyResult.createdAt,
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Create API key error:', error);
+            logger_1.default.error("Create API key error:", error);
             if (error instanceof Error) {
-                if (error.message === 'Merchant not found') {
+                if (error.message === "Merchant not found") {
                     return res.status(404).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('limit exceeded')) {
+                if (error.message.includes("limit exceeded")) {
                     return res.status(429).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
             }
@@ -612,28 +638,28 @@ class MerchantController {
             if (!merchantId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Merchant authentication required'
+                    error: "Merchant authentication required",
                 });
             }
             await merchant_service_1.merchantService.deleteApiKey(merchantId, keyId);
             return res.json({
                 success: true,
-                message: 'API key deleted successfully'
+                message: "API key deleted successfully",
             });
         }
         catch (error) {
-            logger_1.default.error('Delete API key error:', error);
+            logger_1.default.error("Delete API key error:", error);
             if (error instanceof Error) {
-                if (error.message.includes('not found')) {
+                if (error.message.includes("not found")) {
                     return res.status(404).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
-                if (error.message.includes('not authorized')) {
+                if (error.message.includes("not authorized")) {
                     return res.status(403).json({
                         success: false,
-                        error: error.message
+                        error: error.message,
                     });
                 }
             }
@@ -643,13 +669,13 @@ class MerchantController {
     async getAllMerchants(req, res, next) {
         try {
             // Admin-only endpoint - should be protected by admin auth middleware
-            const { page = 1, limit = 20, status, search, sortBy = 'createdAt' } = req.query;
+            const { page = 1, limit = 20, status, search, sortBy = "createdAt", } = req.query;
             const pageNum = parseInt(page) || 1;
             const limitNum = parseInt(limit) || 20;
             if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid pagination parameters. Page must be >= 1, limit must be 1-100'
+                    error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
                 });
             }
             const result = await merchant_service_1.merchantService.getAllMerchants({
@@ -657,7 +683,7 @@ class MerchantController {
                 limit: limitNum,
                 status: status,
                 search: search,
-                sortBy: sortBy
+                sortBy: sortBy,
             });
             return res.json({
                 success: true,
@@ -667,13 +693,13 @@ class MerchantController {
                         current: pageNum,
                         total: result.pages,
                         count: result.total,
-                        limit: limitNum
-                    }
-                }
+                        limit: limitNum,
+                    },
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Get all merchants error:', error);
+            logger_1.default.error("Get all merchants error:", error);
             next(error);
         }
     }
@@ -684,14 +710,19 @@ class MerchantController {
             if (!status) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Status is required'
+                    error: "Status is required",
                 });
             }
-            const validStatuses = ['active', 'inactive', 'suspended', 'pending'];
+            const validStatuses = [
+                "active",
+                "inactive",
+                "suspended",
+                "pending",
+            ];
             if (!validStatuses.includes(status)) {
                 return res.status(400).json({
                     success: false,
-                    error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+                    error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
                 });
             }
             const updatedMerchant = await merchant_service_1.merchantService.updateMerchantStatus(merchantId, status, reason);
@@ -703,16 +734,17 @@ class MerchantController {
                     merchantName: updatedMerchant.merchantName,
                     isActive: updatedMerchant.isActive,
                     isVerified: updatedMerchant.isVerified,
-                    updatedAt: updatedMerchant.updatedAt
-                }
+                    updatedAt: updatedMerchant.updatedAt,
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Update merchant status error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Update merchant status error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -722,50 +754,54 @@ class MerchantController {
         try {
             const { merchantId } = req.params;
             const { dailyLimit, monthlyLimit, commission } = req.body;
-            if (dailyLimit !== undefined && (dailyLimit < 0 || dailyLimit > 1000000)) {
+            if (dailyLimit !== undefined &&
+                (dailyLimit < 0 || dailyLimit > 1000000)) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Daily limit must be between 0 and 1,000,000'
+                    error: "Daily limit must be between 0 and 1,000,000",
                 });
             }
-            if (monthlyLimit !== undefined && (monthlyLimit < 0 || monthlyLimit > 10000000)) {
+            if (monthlyLimit !== undefined &&
+                (monthlyLimit < 0 || monthlyLimit > 10000000)) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Monthly limit must be between 0 and 10,000,000'
+                    error: "Monthly limit must be between 0 and 10,000,000",
                 });
             }
-            if (commission !== undefined && (commission < 0 || commission > 10)) {
+            if (commission !== undefined &&
+                (commission < 0 || commission > 10)) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Commission must be between 0 and 10 percent'
+                    error: "Commission must be between 0 and 10 percent",
                 });
             }
             const updatedMerchant = await merchant_service_1.merchantService.updateMerchantLimits(merchantId, {
                 dailyLimit,
                 monthlyLimit,
-                commission
+                commission,
             });
             return res.json({
                 success: true,
-                message: 'Merchant limits updated successfully',
+                message: "Merchant limits updated successfully",
                 data: {
                     merchantId: updatedMerchant.merchantId,
                     merchantName: updatedMerchant.merchantName,
                     commission: updatedMerchant.commission,
                     limits: {
                         dailyLimit,
-                        monthlyLimit
+                        monthlyLimit,
                     },
-                    updatedAt: updatedMerchant.updatedAt
-                }
+                    updatedAt: updatedMerchant.updatedAt,
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Update merchant limits error:', error);
-            if (error instanceof Error && error.message === 'Merchant not found') {
+            logger_1.default.error("Update merchant limits error:", error);
+            if (error instanceof Error &&
+                error.message === "Merchant not found") {
                 return res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);

@@ -17,9 +17,184 @@ const socket_service_1 = require("../services/socket.service");
 const uuid_1 = require("uuid");
 const transactions_1 = require("@mysten/sui/transactions");
 const ed25519_1 = require("@mysten/sui/keypairs/ed25519");
+const encryption_service_1 = require("../services/encryption.service");
 const logger_1 = __importDefault(require("../utils/logger"));
 const paymentService = new payment_service_1.PaymentService();
 class PaymentController {
+    // Create a payment intent (pending transaction) before confirmation
+    async createPaymentIntent(req, res, next) {
+        try {
+            const { cardUuid, amount, merchantId } = req.body;
+            const user = req.user;
+            // Basic validation similar to processPayment preconditions
+            if (!cardUuid || !amount || !merchantId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: cardUuid, amount, merchantId",
+                    code: constants_1.ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+            // Validate card ownership and status
+            const card = await Card_model_1.Card.findOne({ cardUuid, userId: user._id });
+            if (!card || !card.isActive || card.blockedAt) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid or inactive card",
+                    code: constants_1.ERROR_CODES.INVALID_CARD,
+                });
+            }
+            // Validate merchant
+            const merchant = await Merchant_model_1.Merchant.findOne({ merchantId });
+            if (!merchant || !merchant.isActive) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Invalid or inactive merchant",
+                    code: constants_1.ERROR_CODES.INVALID_INPUT,
+                });
+            }
+            // Create a pending transaction as the intent
+            const intent = await Transaction_model_1.Transaction.create({
+                userId: user._id,
+                cardId: card._id,
+                cardUuid,
+                type: "payment",
+                amount,
+                currency: "SUI",
+                merchantId: merchant._id,
+                merchantName: merchant.merchantName,
+                status: "pending",
+                fromAddress: user.walletAddress,
+                toAddress: merchant.walletAddress,
+                metadata: {
+                    intent: true,
+                    createdAt: new Date(),
+                    ipAddress: req.ip || req.connection.remoteAddress,
+                    userAgent: req.headers["user-agent"],
+                },
+            });
+            return res.status(201).json({
+                success: true,
+                message: "Payment intent created",
+                intent: {
+                    id: intent._id,
+                    amount: intent.amount,
+                    status: intent.status,
+                    merchantName: intent.merchantName,
+                },
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    // Confirm payment using PIN and execute blockchain transfer based on a pending intent
+    async confirmPayment(req, res, next) {
+        try {
+            const { id } = req.params;
+            const { pin } = req.body;
+            const user = req.user;
+            // Require PIN for confirmation
+            if (!pin) {
+                return res.status(400).json({
+                    success: false,
+                    error: "PIN is required",
+                    code: constants_1.ERROR_CODES.AUTH_FAILED,
+                });
+            }
+            // Verify PIN
+            const isPinValid = await this.verifyUserPin(user.id, pin);
+            if (!isPinValid) {
+                return res.status(401).json({
+                    success: false,
+                    error: "Invalid PIN",
+                    code: constants_1.ERROR_CODES.AUTH_FAILED,
+                });
+            }
+            // Load pending intent
+            const intent = await Transaction_model_1.Transaction.findById(id);
+            if (!intent) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Payment intent not found",
+                    code: constants_1.ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+            // Ownership check
+            if (intent.userId.toString() !== user.id) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized to confirm this payment",
+                    code: constants_1.ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+            if (intent.status !== "pending") {
+                return res.status(400).json({
+                    success: false,
+                    error: "Payment is not in a confirmable state",
+                    code: constants_1.ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+            // Execute payment using service (ensures all validations and on-chain execution)
+            const processed = await paymentService.processPayment(intent.cardUuid, intent.amount, intent.merchantId.toString(), { ...intent.metadata, confirmedFromIntent: id });
+            return res.json({
+                success: true,
+                message: "Payment confirmed and processed",
+                transaction: {
+                    id: processed._id,
+                    txHash: processed.txHash,
+                    amount: processed.amount,
+                    totalAmount: processed.totalAmount,
+                    gasFee: processed.gasFee,
+                    status: processed.status,
+                    merchantName: processed.merchantName,
+                },
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    // Get payment status by id
+    async getPaymentStatus(req, res, next) {
+        try {
+            const { id } = req.params;
+            const user = req.user;
+            const transaction = await Transaction_model_1.Transaction.findById(id);
+            if (!transaction) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Transaction not found",
+                });
+            }
+            // If this transaction belongs to a user, enforce ownership
+            if (transaction.userId &&
+                transaction.userId.toString() !== user.id) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized to view this transaction",
+                    code: constants_1.ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+            return res.json({
+                success: true,
+                status: transaction.status,
+                transaction: {
+                    id: transaction._id,
+                    amount: transaction.amount,
+                    totalAmount: transaction.totalAmount,
+                    gasFee: transaction.gasFee,
+                    status: transaction.status,
+                    txHash: transaction.txHash,
+                    merchantName: transaction.merchantName,
+                    createdAt: transaction.createdAt,
+                    completedAt: transaction.completedAt,
+                },
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
     async validatePayment(req, res, next) {
         try {
             const { cardUuid, amount, merchantId } = req.body;
@@ -28,7 +203,7 @@ class PaymentController {
             if (!user) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Authentication required',
+                    error: "Authentication required",
                     code: constants_1.ERROR_CODES.UNAUTHORIZED,
                 });
             }
@@ -36,15 +211,15 @@ class PaymentController {
             if (!cardUuid || !amount || !merchantId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: cardUuid, amount, merchantId',
+                    error: "Missing required fields: cardUuid, amount, merchantId",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
             // Amount validation
-            if (typeof amount !== 'number' || amount <= 0) {
+            if (typeof amount !== "number" || amount <= 0) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid amount',
+                    error: "Invalid amount",
                     code: constants_1.ERROR_CODES.INVALID_INPUT,
                 });
             }
@@ -67,7 +242,7 @@ class PaymentController {
             if (!card) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Card not found or not owned by user',
+                    error: "Card not found or not owned by user",
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                 });
             }
@@ -75,14 +250,14 @@ class PaymentController {
             if (!card.isActive) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Card is not active',
+                    error: "Card is not active",
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                 });
             }
             if (card.blockedAt) {
                 return res.status(400).json({
                     success: false,
-                    error: `Card is blocked: ${card.blockedReason || 'Unknown reason'}`,
+                    error: `Card is blocked: ${card.blockedReason || "Unknown reason"}`,
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                 });
             }
@@ -90,7 +265,7 @@ class PaymentController {
             if (card.expiryDate < new Date()) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Card has expired',
+                    error: "Card has expired",
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                 });
             }
@@ -99,7 +274,7 @@ class PaymentController {
             if (!merchant || !merchant.isActive) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Invalid or inactive merchant',
+                    error: "Invalid or inactive merchant",
                     code: constants_1.ERROR_CODES.INVALID_INPUT,
                 });
             }
@@ -118,7 +293,7 @@ class PaymentController {
             if (card.dailySpent + amount > user.dailyLimit) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Daily spending limit exceeded',
+                    error: "Daily spending limit exceeded",
                     code: constants_1.ERROR_CODES.LIMIT_EXCEEDED,
                     details: {
                         currentDaily: card.dailySpent,
@@ -130,7 +305,7 @@ class PaymentController {
             if (card.monthlySpent + amount > user.monthlyLimit) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Monthly spending limit exceeded',
+                    error: "Monthly spending limit exceeded",
                     code: constants_1.ERROR_CODES.LIMIT_EXCEEDED,
                     details: {
                         currentMonthly: card.monthlySpent,
@@ -143,14 +318,14 @@ class PaymentController {
             try {
                 const balance = await (0, sui_config_1.getSuiClient)().getBalance({
                     owner: user.walletAddress,
-                    coinType: '0x2::sui::SUI',
+                    coinType: "0x2::sui::SUI",
                 });
                 const walletBalanceInSui = parseFloat(balance.totalBalance) / 1_000_000_000;
-                const totalRequired = amount + (constants_1.CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000);
+                const totalRequired = amount + constants_1.CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000;
                 if (walletBalanceInSui < totalRequired) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Insufficient wallet balance',
+                        error: "Insufficient wallet balance",
                         code: constants_1.ERROR_CODES.INSUFFICIENT_BALANCE,
                         details: {
                             walletBalance: walletBalanceInSui,
@@ -162,16 +337,16 @@ class PaymentController {
                 }
             }
             catch (error) {
-                logger_1.default.error('Error checking wallet balance:', error);
+                logger_1.default.error("Error checking wallet balance:", error);
                 return res.status(503).json({
                     success: false,
-                    error: 'Unable to verify wallet balance',
+                    error: "Unable to verify wallet balance",
                     code: constants_1.ERROR_CODES.BLOCKCHAIN_ERROR,
                 });
             }
             res.json({
                 success: true,
-                message: 'Payment validation successful',
+                message: "Payment validation successful",
                 data: {
                     walletAddress: user.walletAddress,
                     cardInfo: {
@@ -187,13 +362,14 @@ class PaymentController {
                     transactionDetails: {
                         amount,
                         estimatedGasFee: constants_1.CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
-                        totalAmount: amount + (constants_1.CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000),
+                        totalAmount: amount +
+                            constants_1.CONSTANTS.DEFAULT_GAS_BUDGET / 1_000_000_000,
                     },
                 },
             });
         }
         catch (error) {
-            logger_1.default.error('Payment validation error:', error);
+            logger_1.default.error("Payment validation error:", error);
             next(error);
         }
     }
@@ -203,13 +379,17 @@ class PaymentController {
         const requestId = `nfc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         try {
             const { cardUuid, amount, merchantId, terminalId } = req.body;
-            logger_1.default.info(`🔍 [${requestId}] NFC validation started`, { cardUuid, amount, merchantId });
+            logger_1.default.info(`🔍 [${requestId}] NFC validation started`, {
+                cardUuid,
+                amount,
+                merchantId,
+            });
             // Input validation
             if (!cardUuid || !amount || !merchantId) {
                 const processingTime = Date.now() - startTime;
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: cardUuid, amount, merchantId',
+                    error: "Missing required fields: cardUuid, amount, merchantId",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                     processingTime,
                     requestId,
@@ -227,18 +407,22 @@ class PaymentController {
                     authCode: cached.authCode,
                     processingTime,
                     fromCache: true,
-                    requestId
+                    requestId,
                 });
             }
             // Find card without requiring user authentication
-            const card = await Card_model_1.Card.findOne({ cardUuid }).populate('userId');
+            const card = await Card_model_1.Card.findOne({ cardUuid }).populate("userId");
             if (!card) {
                 const processingTime = Date.now() - startTime;
-                await (0, redis_config_1.setCached)(validationKey, { authorized: false, reason: 'CARD_NOT_FOUND', expiresAt: Date.now() + 30000 }, 30);
+                await (0, redis_config_1.setCached)(validationKey, {
+                    authorized: false,
+                    reason: "CARD_NOT_FOUND",
+                    expiresAt: Date.now() + 30000,
+                }, 30);
                 return res.status(404).json({
                     success: false,
                     authorized: false,
-                    error: 'Card not found',
+                    error: "Card not found",
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                     processingTime,
                     requestId,
@@ -247,11 +431,15 @@ class PaymentController {
             // Check card status
             if (!card.isActive || card.blockedAt) {
                 const processingTime = Date.now() - startTime;
-                await (0, redis_config_1.setCached)(validationKey, { authorized: false, reason: 'CARD_BLOCKED', expiresAt: Date.now() + 30000 }, 30);
+                await (0, redis_config_1.setCached)(validationKey, {
+                    authorized: false,
+                    reason: "CARD_BLOCKED",
+                    expiresAt: Date.now() + 30000,
+                }, 30);
                 return res.status(400).json({
                     success: false,
                     authorized: false,
-                    error: 'Card is blocked or inactive',
+                    error: "Card is blocked or inactive",
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                     processingTime,
                     requestId,
@@ -264,7 +452,7 @@ class PaymentController {
                 return res.status(404).json({
                     success: false,
                     authorized: false,
-                    error: 'Invalid merchant',
+                    error: "Invalid merchant",
                     code: constants_1.ERROR_CODES.INVALID_INPUT,
                     processingTime,
                     requestId,
@@ -274,13 +462,20 @@ class PaymentController {
             const user = card.userId;
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            if (card.dailySpent + amount > (card.dailyLimit || user.dailyLimit || constants_1.CONSTANTS.DAILY_AMOUNT_LIMIT)) {
+            if (card.dailySpent + amount >
+                (card.dailyLimit ||
+                    user.dailyLimit ||
+                    constants_1.CONSTANTS.DAILY_AMOUNT_LIMIT)) {
                 const processingTime = Date.now() - startTime;
-                await (0, redis_config_1.setCached)(validationKey, { authorized: false, reason: 'DAILY_LIMIT', expiresAt: Date.now() + 30000 }, 30);
+                await (0, redis_config_1.setCached)(validationKey, {
+                    authorized: false,
+                    reason: "DAILY_LIMIT",
+                    expiresAt: Date.now() + 30000,
+                }, 30);
                 return res.status(400).json({
                     success: false,
                     authorized: false,
-                    error: 'Daily limit exceeded',
+                    error: "Daily limit exceeded",
                     code: constants_1.ERROR_CODES.LIMIT_EXCEEDED,
                     processingTime,
                     requestId,
@@ -288,7 +483,7 @@ class PaymentController {
                         dailySpent: card.dailySpent,
                         dailyLimit: card.dailyLimit || user.dailyLimit,
                         requestedAmount: amount,
-                    }
+                    },
                 });
             }
             // Amount validation
@@ -318,7 +513,7 @@ class PaymentController {
                 merchantInfo: {
                     merchantName: merchant.merchantName,
                     terminalId: terminalId,
-                }
+                },
             };
             await (0, redis_config_1.setCached)(validationKey, result, 30);
             const processingTime = Date.now() - startTime;
@@ -341,7 +536,7 @@ class PaymentController {
             res.status(500).json({
                 success: false,
                 authorized: false,
-                error: 'Validation service temporarily unavailable',
+                error: "Validation service temporarily unavailable",
                 code: constants_1.ERROR_CODES.INTERNAL_ERROR,
                 processingTime,
                 requestId,
@@ -352,12 +547,31 @@ class PaymentController {
     async processNFCPaymentAsync(req, res, next) {
         try {
             const { cardUuid, amount, merchantId, terminalId } = req.body;
-            const user = req.user;
+            // const user = (req as any).user;
+            const card = await Card_model_1.Card.findOne({
+                uuid: cardUuid,
+                status: "active",
+            });
+            if (!card) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid or inactive card",
+                    code: constants_1.ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+            const user = await User_model_1.User.findById(card.userId);
+            if (!user) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User not found for this card",
+                    code: constants_1.ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
             // Input validation
             if (!cardUuid || !amount || !merchantId || !terminalId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields',
+                    error: "Missing required fields",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -365,7 +579,7 @@ class PaymentController {
             if (!user.walletAddress) {
                 // For testing purposes, use a default wallet address
                 // In production, this should prompt user to set up their wallet
-                user.walletAddress = '0xdefault_user_wallet_' + user._id;
+                user.walletAddress = "0xdefault_user_wallet_" + user._id;
             }
             // Quick pre-validation using cache
             const validationKey = redis_config_1.NFCCacheKeys.fastValidation(cardUuid, amount);
@@ -373,7 +587,7 @@ class PaymentController {
             if (cachedValidation === false) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Payment validation failed',
+                    error: "Payment validation failed",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -382,7 +596,7 @@ class PaymentController {
             if (!merchant) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid merchant',
+                    error: "Invalid merchant",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -396,11 +610,11 @@ class PaymentController {
                 transactionId,
                 userId: user._id,
                 cardUuid,
-                txHash: 'pending_' + transactionId, // Temporary hash for pending transaction
-                type: 'payment',
+                txHash: "pending_" + transactionId, // Temporary hash for pending transaction
+                type: "payment",
                 amount,
-                currency: 'SUI',
-                status: 'pending',
+                currency: "SUI",
+                status: "pending",
                 merchantId: merchant._id, // Use the MongoDB ObjectId
                 merchantName: merchant.merchantName,
                 terminalId,
@@ -410,14 +624,14 @@ class PaymentController {
                 totalAmount, // Add calculated total
                 metadata: {
                     ipAddress: req.ip || req.connection.remoteAddress,
-                    userAgent: req.headers['user-agent'],
+                    userAgent: req.headers["user-agent"],
                     timestamp: new Date(),
                     merchantIdString: merchantId, // Store original merchantId string for reference
                     terminalId,
                 },
             });
             // Add to processing queue
-            const job = await queue_config_1.paymentQueue.add('processNFCPayment', {
+            const job = await queue_config_1.paymentQueue.add("processNFCPayment", {
                 transactionId,
                 paymentData: {
                     cardUuid,
@@ -434,12 +648,12 @@ class PaymentController {
                 priority: amount > 1000000 ? 5 : 10, // Higher priority for large amounts
                 attempts: 3,
                 backoff: {
-                    type: 'exponential',
+                    type: "exponential",
                     delay: 2000,
                 },
             });
             // Connect user to socket for real-time updates
-            socket_service_1.socketService.addUserSocket(user.id, req.headers['x-socket-id'] || '');
+            socket_service_1.socketService.addUserSocket(user.id, req.headers["x-socket-id"] || "");
             logger_1.default.info(`Async payment initiated`, {
                 transactionId,
                 jobId: job.id,
@@ -449,10 +663,10 @@ class PaymentController {
             // Return immediate response
             res.status(202).json({
                 success: true,
-                message: 'Payment processing initiated',
+                message: "Payment processing initiated",
                 transactionId,
-                status: 'pending',
-                estimatedProcessingTime: '2-5 seconds',
+                status: "pending",
+                estimatedProcessingTime: "2-5 seconds",
                 tracking: {
                     jobId: job.id,
                     transactionId,
@@ -461,32 +675,62 @@ class PaymentController {
             });
         }
         catch (error) {
-            logger_1.default.error('Async payment initiation error:', error);
+            logger_1.default.error("Async payment initiation error:", error);
             next(error);
         }
     }
     async processNFCPaymentDirect(req, res, next) {
         try {
-            const { cardUuid, amount, merchantId, terminalId } = req.body;
-            const user = req.user;
+            const { cardUuid, amount, merchantId, terminalId, pin } = req.body;
             // Input validation
             if (!cardUuid || !amount || !merchantId || !terminalId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields',
+                    error: "Missing required fields",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
+            // Find card and populate user (fresh from DB)
+            const card = await Card_model_1.Card.findOne({ cardUuid }).populate('userId');
+            if (!card) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Card not found",
+                    code: constants_1.ERROR_CODES.INVALID_CARD,
+                });
+            }
+            // Get user directly from DB to ensure fresh data including pinHash
+            const user = await User_model_1.User.findById(card.userId).select('+pinHash');
+            if (!user) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User not found",
+                    code: constants_1.ERROR_CODES.INVALID_INPUT,
+                });
+            }
+            // Verify PIN if provided
+            if (pin) {
+                console.log('User data:', { _id: user._id, email: user.email, hasPinHash: !!user.pinHash });
+                const isPinValid = await user.comparePin(pin);
+                console.log('PIN validation result:', isPinValid);
+                if (!isPinValid) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Invalid PIN",
+                        code: constants_1.ERROR_CODES.INVALID_INPUT,
+                    });
+                }
+            }
             // Check if user has a wallet address
             if (!user.walletAddress) {
-                user.walletAddress = '0xdefault_user_wallet_' + user._id;
+                user.walletAddress = "0xdefault_user_wallet_" + user._id;
             }
             // Find merchant by merchantId string
             const merchant = await Merchant_model_1.Merchant.findOne({ merchantId });
             if (!merchant) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid merchant',
+                    error: "Invalid merchant",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -500,11 +744,11 @@ class PaymentController {
                 transactionId,
                 userId: user._id,
                 cardUuid,
-                txHash: 'pending_' + transactionId,
-                type: 'payment',
+                txHash: "pending_" + transactionId,
+                type: "payment",
                 amount,
-                currency: 'SUI',
-                status: 'processing',
+                currency: "SUI",
+                status: "processing",
                 merchantId: merchant._id,
                 merchantName: merchant.merchantName,
                 terminalId,
@@ -514,29 +758,44 @@ class PaymentController {
                 totalAmount,
                 metadata: {
                     ipAddress: req.ip || req.connection.remoteAddress,
-                    userAgent: req.headers['user-agent'],
+                    userAgent: req.headers["user-agent"],
                     timestamp: new Date(),
                     merchantIdString: merchantId,
                     terminalId,
                 },
             });
             // Process directly (like the successful test script)
-            const userWithKey = await User_model_1.User.findById(user._id).select('+encryptedPrivateKey');
+            const userWithKey = await User_model_1.User.findById(user._id).select("+encryptedPrivateKey");
             if (!userWithKey || !userWithKey.encryptedPrivateKey) {
-                throw new Error('User wallet not configured');
+                throw new Error("User wallet not configured");
             }
-            // Process blockchain transaction directly
+            // Process blockchain transaction directly - handle private key formats
             let keypair;
             if (userWithKey.encryptedPrivateKey.startsWith('suiprivkey1')) {
+                // It's a bech32 format, use directly
                 keypair = ed25519_1.Ed25519Keypair.fromSecretKey(userWithKey.encryptedPrivateKey);
             }
             else {
-                throw new Error('Private key format not supported');
+                // It's encrypted base64, decrypt first
+                const privateKey = (0, encryption_service_1.decryptPrivateKey)(userWithKey.encryptedPrivateKey);
+                const keyBuffer = Buffer.from(privateKey, 'base64');
+                // Ed25519 private key should be 32 bytes, take first 32 if longer
+                const secretKey = keyBuffer.length > 32 ? keyBuffer.subarray(0, 32) : keyBuffer;
+                keypair = ed25519_1.Ed25519Keypair.fromSecretKey(secretKey);
+                // Debug: Check if address matches
+                const derivedAddress = keypair.getPublicKey().toSuiAddress();
+                console.log('DB Address:', user.walletAddress);
+                console.log('Derived Address:', derivedAddress);
+                console.log('Addresses match:', user.walletAddress === derivedAddress);
+                // Use derived address for transaction consistency
+                user.walletAddress = derivedAddress;
             }
             const amountInMist = Math.floor(amount * 1_000_000_000);
             const tx = new transactions_1.Transaction();
             tx.setSender(user.walletAddress);
-            const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(amountInMist)]);
+            const [paymentCoin] = tx.splitCoins(tx.gas, [
+                tx.pure.u64(amountInMist),
+            ]);
             tx.transferObjects([paymentCoin], tx.pure.address(merchant.walletAddress));
             tx.setGasBudget(10000000);
             const suiClient = (0, sui_config_1.getSuiClient)();
@@ -553,9 +812,10 @@ class PaymentController {
                 digest: result.digest,
                 options: { showEffects: true },
             });
-            const actualGasFee = Number(result.effects?.gasUsed?.computationCost || 0) / 1_000_000_000;
+            const actualGasFee = Number(result.effects?.gasUsed?.computationCost || 0) /
+                1_000_000_000;
             // Update transaction with success
-            transaction.status = 'completed';
+            transaction.status = "completed";
             transaction.txHash = result.digest;
             transaction.gasFee = actualGasFee;
             transaction.totalAmount = amount + actualGasFee;
@@ -563,20 +823,20 @@ class PaymentController {
             await transaction.save();
             res.json({
                 success: true,
-                message: 'Payment completed successfully',
+                message: "Payment completed successfully",
                 transaction: {
                     transactionId,
                     txHash: result.digest,
                     amount,
                     gasFee: actualGasFee,
                     totalAmount: amount + actualGasFee,
-                    status: 'completed',
-                    explorerUrl: `https://suiscan.xyz/${process.env.SUI_NETWORK || 'testnet'}/tx/${result.digest}`,
+                    status: "completed",
+                    explorerUrl: `https://suiscan.xyz/${process.env.SUI_NETWORK || "testnet"}/tx/${result.digest}`,
                 },
             });
         }
         catch (error) {
-            logger_1.default.error('Direct payment error:', error);
+            logger_1.default.error("Direct payment error:", error);
             next(error);
         }
     }
@@ -588,16 +848,17 @@ class PaymentController {
             if (!cardUuid || !amount || !merchantId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields',
+                    error: "Missing required fields",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
             // PIN verification for high-value transactions
-            if (amount > constants_1.CONSTANTS.DAILY_AMOUNT_LIMIT / 10) { // 10% of daily limit
+            if (amount > constants_1.CONSTANTS.DAILY_AMOUNT_LIMIT / 10) {
+                // 10% of daily limit
                 if (!pin) {
                     return res.status(400).json({
                         success: false,
-                        error: 'PIN required for high-value transactions',
+                        error: "PIN required for high-value transactions",
                         code: constants_1.ERROR_CODES.AUTH_FAILED,
                     });
                 }
@@ -606,29 +867,29 @@ class PaymentController {
                 if (!isPinValid) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Invalid PIN',
+                        error: "Invalid PIN",
                         code: constants_1.ERROR_CODES.AUTH_FAILED,
                     });
                 }
             }
             // Rate limiting check
             const rateLimitKey = `payment_rate_${user.id}`;
-            const recentTransactions = await (0, redis_config_1.getCached)(rateLimitKey) || 0;
+            const recentTransactions = (await (0, redis_config_1.getCached)(rateLimitKey)) || 0;
             if (recentTransactions >= constants_1.CONSTANTS.DAILY_TRANSACTION_LIMIT) {
                 return res.status(429).json({
                     success: false,
-                    error: 'Daily transaction limit exceeded',
+                    error: "Daily transaction limit exceeded",
                     code: constants_1.ERROR_CODES.LIMIT_EXCEEDED,
                 });
             }
             // Prepare transaction metadata
             const metadata = {
                 ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.headers['user-agent'],
-                device: req.headers['x-device-id'],
-                location: req.headers['x-location'],
+                userAgent: req.headers["user-agent"],
+                device: req.headers["x-device-id"],
+                location: req.headers["x-location"],
                 timestamp: new Date().toISOString(),
-                apiVersion: '1.0',
+                apiVersion: "1.0",
             };
             logger_1.default.info(`Processing payment: ${cardUuid} -> ${merchantId}, amount: ${amount}`, {
                 userId: user.id,
@@ -648,7 +909,7 @@ class PaymentController {
             });
             res.json({
                 success: true,
-                message: 'Payment processed successfully',
+                message: "Payment processed successfully",
                 transaction: {
                     id: transaction._id,
                     txHash: transaction.txHash,
@@ -658,7 +919,7 @@ class PaymentController {
                     status: transaction.status,
                     merchantName: transaction.merchantName,
                     timestamp: transaction.createdAt,
-                    estimatedConfirmationTime: '2-5 seconds',
+                    estimatedConfirmationTime: "2-5 seconds",
                 },
                 receipt: {
                     transactionId: transaction._id,
@@ -672,29 +933,29 @@ class PaymentController {
             });
         }
         catch (error) {
-            logger_1.default.error('Payment processing error:', {
-                error: error instanceof Error ? error.message : 'Unknown error',
+            logger_1.default.error("Payment processing error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
                 stack: error instanceof Error ? error.stack : undefined,
                 userId: req.user?.id,
                 body: req.body,
             });
             // Handle specific error types
             if (error instanceof Error) {
-                if (error.message.includes('insufficient balance')) {
+                if (error.message.includes("insufficient balance")) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Insufficient balance',
+                        error: "Insufficient balance",
                         code: constants_1.ERROR_CODES.INSUFFICIENT_BALANCE,
                     });
                 }
-                if (error.message.includes('limit exceeded')) {
+                if (error.message.includes("limit exceeded")) {
                     return res.status(400).json({
                         success: false,
                         error: error.message,
                         code: constants_1.ERROR_CODES.LIMIT_EXCEEDED,
                     });
                 }
-                if (error.message.includes('Card')) {
+                if (error.message.includes("Card")) {
                     return res.status(400).json({
                         success: false,
                         error: error.message,
@@ -707,7 +968,7 @@ class PaymentController {
     }
     async verifyUserPin(userId, pin) {
         try {
-            const user = await User_model_1.User.findById(userId).select('+pinHash');
+            const user = await User_model_1.User.findById(userId).select("+pinHash");
             if (!user) {
                 return false;
             }
@@ -715,7 +976,7 @@ class PaymentController {
             return await user.comparePin(pin);
         }
         catch (error) {
-            logger_1.default.error('PIN verification error:', error);
+            logger_1.default.error("PIN verification error:", error);
             return false;
         }
     }
@@ -727,7 +988,7 @@ class PaymentController {
             if (!transactionBytes || !cardUuid) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: transactionBytes, cardUuid',
+                    error: "Missing required fields: transactionBytes, cardUuid",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -736,7 +997,7 @@ class PaymentController {
             if (!card || !card.isActive) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Card not found or not active',
+                    error: "Card not found or not active",
                     code: constants_1.ERROR_CODES.INVALID_CARD,
                 });
             }
@@ -745,50 +1006,52 @@ class PaymentController {
                 userId: user._id,
                 cardId: card._id,
                 cardUuid,
-                type: 'payment',
+                type: "payment",
                 amount: amount || 0,
-                currency: 'SUI',
-                status: 'pending',
+                currency: "SUI",
+                status: "pending",
                 fromAddress: user.walletAddress,
-                toAddress: '', // Will be filled when merchant is known
+                toAddress: "", // Will be filled when merchant is known
                 metadata: {
                     signedAt: new Date(),
                     ipAddress: req.ip,
-                    userAgent: req.headers['user-agent'],
+                    userAgent: req.headers["user-agent"],
                 },
             });
             try {
                 // Import required Sui modules
-                const { Transaction } = require('@mysten/sui/transactions');
-                const { Ed25519Keypair } = require('@mysten/sui/keypairs/ed25519');
-                const { decryptPrivateKey } = require('../services/encryption.service');
+                const { Transaction } = require("@mysten/sui/transactions");
+                const { Ed25519Keypair, } = require("@mysten/sui/keypairs/ed25519");
+                const { decryptPrivateKey, } = require("../services/encryption.service");
                 // Get user's private key
-                const userWithKey = await User_model_1.User.findById(user.id).select('+encryptedPrivateKey');
+                const userWithKey = await User_model_1.User.findById(user.id).select("+encryptedPrivateKey");
                 if (!userWithKey || !userWithKey.encryptedPrivateKey) {
-                    throw new Error('User private key not found');
+                    throw new Error("User private key not found");
                 }
                 // Decrypt and create keypair
                 const privateKey = decryptPrivateKey(userWithKey.encryptedPrivateKey);
-                const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+                const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, "base64"));
                 // Parse transaction bytes
                 const transactionBytesArray = Array.isArray(transactionBytes)
                     ? new Uint8Array(transactionBytes)
-                    : new Uint8Array(Buffer.from(transactionBytes, 'base64'));
+                    : new Uint8Array(Buffer.from(transactionBytes, "base64"));
                 // Deserialize transaction
                 const tx = Transaction.from(transactionBytesArray);
                 // Verify transaction sender matches user wallet
                 if (tx.getSender() !== user.walletAddress) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Transaction sender does not match user wallet',
+                        error: "Transaction sender does not match user wallet",
                         code: constants_1.ERROR_CODES.AUTH_FAILED,
                     });
                 }
                 // Sign the transaction
-                const transactionBytesForSigning = await tx.build({ client: (0, sui_config_1.getSuiClient)() });
+                const transactionBytesForSigning = await tx.build({
+                    client: (0, sui_config_1.getSuiClient)(),
+                });
                 const signature = await keypair.signTransaction(transactionBytesForSigning);
                 // Update pending transaction with signature info
-                pendingTransaction.status = 'processing';
+                pendingTransaction.status = "processing";
                 pendingTransaction.metadata = {
                     ...pendingTransaction.metadata,
                     signatureGenerated: true,
@@ -802,34 +1065,37 @@ class PaymentController {
                 });
                 res.json({
                     success: true,
-                    message: 'Transaction signed successfully',
+                    message: "Transaction signed successfully",
                     signature: signature.signature,
                     transactionId: pendingTransaction._id,
                     data: {
                         signature: signature.signature,
                         publicKey: keypair.getPublicKey().toSuiAddress(),
-                        transactionBytes: Buffer.from(transactionBytesForSigning).toString('base64'),
+                        transactionBytes: Buffer.from(transactionBytesForSigning).toString("base64"),
                     },
                 });
             }
             catch (signingError) {
                 // Update transaction status to failed
-                pendingTransaction.status = 'failed';
-                pendingTransaction.failureReason = signingError instanceof Error ? signingError.message : 'Signing failed';
+                pendingTransaction.status = "failed";
+                pendingTransaction.failureReason =
+                    signingError instanceof Error
+                        ? signingError.message
+                        : "Signing failed";
                 await pendingTransaction.save();
                 throw signingError;
             }
         }
         catch (error) {
-            logger_1.default.error('Transaction signing error:', {
-                error: error instanceof Error ? error.message : 'Unknown error',
+            logger_1.default.error("Transaction signing error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
                 userId: req.user?.id,
                 cardUuid: req.body.cardUuid,
             });
-            if (error instanceof Error && error.message.includes('decrypt')) {
+            if (error instanceof Error && error.message.includes("decrypt")) {
                 return res.status(500).json({
                     success: false,
-                    error: 'Unable to access wallet keys',
+                    error: "Unable to access wallet keys",
                     code: constants_1.ERROR_CODES.INTERNAL_ERROR,
                 });
             }
@@ -844,7 +1110,7 @@ class PaymentController {
             if (!txHash || (!transactionId && !req.body.cardUuid)) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: txHash and (transactionId or cardUuid)',
+                    error: "Missing required fields: txHash and (transactionId or cardUuid)",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -857,13 +1123,13 @@ class PaymentController {
                 transaction = await Transaction_model_1.Transaction.findOne({
                     cardUuid: req.body.cardUuid,
                     userId: user.id,
-                    status: 'processing'
+                    status: "processing",
                 }).sort({ createdAt: -1 });
             }
             if (!transaction) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Transaction not found or not in processing state',
+                    error: "Transaction not found or not in processing state",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -871,7 +1137,7 @@ class PaymentController {
             if (transaction.userId.toString() !== user.id) {
                 return res.status(403).json({
                     success: false,
-                    error: 'Unauthorized to complete this transaction',
+                    error: "Unauthorized to complete this transaction",
                     code: constants_1.ERROR_CODES.UNAUTHORIZED,
                 });
             }
@@ -886,27 +1152,29 @@ class PaymentController {
                     },
                 });
                 // Check if transaction was successful on blockchain
-                const isSuccess = blockchainTx.effects?.status?.status === 'success';
+                const isSuccess = blockchainTx.effects?.status?.status === "success";
                 if (!isSuccess) {
-                    transaction.status = 'failed';
-                    transaction.failureReason = 'Blockchain transaction failed';
+                    transaction.status = "failed";
+                    transaction.failureReason = "Blockchain transaction failed";
                     await transaction.save();
                     return res.status(400).json({
                         success: false,
-                        error: 'Transaction failed on blockchain',
+                        error: "Transaction failed on blockchain",
                         code: constants_1.ERROR_CODES.TRANSACTION_FAILED,
                         details: blockchainTx.effects?.status,
                     });
                 }
                 // Extract gas fee from blockchain transaction
-                const gasFeeFromChain = blockchainTx.effects?.gasUsed ?
-                    (parseInt(blockchainTx.effects.gasUsed.computationCost) +
-                        parseInt(blockchainTx.effects.gasUsed.storageCost)) : 0;
+                const gasFeeFromChain = blockchainTx.effects?.gasUsed
+                    ? parseInt(blockchainTx.effects.gasUsed.computationCost) +
+                        parseInt(blockchainTx.effects.gasUsed.storageCost)
+                    : 0;
                 // Update transaction with completion details
-                transaction.status = 'completed';
+                transaction.status = "completed";
                 transaction.txHash = txHash;
                 transaction.gasFee = gasFeeFromChain / 1_000_000_000; // Convert MIST to SUI
-                transaction.totalAmount = transaction.amount + transaction.gasFee;
+                transaction.totalAmount =
+                    transaction.amount + transaction.gasFee;
                 transaction.completedAt = new Date();
                 transaction.metadata = {
                     ...transaction.metadata,
@@ -922,7 +1190,7 @@ class PaymentController {
                         $inc: {
                             dailySpent: transaction.amount,
                             monthlySpent: transaction.amount,
-                            usageCount: 1
+                            usageCount: 1,
                         },
                         lastUsed: new Date(),
                     });
@@ -948,7 +1216,7 @@ class PaymentController {
                 });
                 res.json({
                     success: true,
-                    message: 'Payment completed successfully',
+                    message: "Payment completed successfully",
                     transaction: {
                         id: transaction._id,
                         txHash: transaction.txHash,
@@ -968,7 +1236,7 @@ class PaymentController {
                         totalAmount: transaction.totalAmount,
                         merchant: transaction.merchantName,
                         timestamp: transaction.completedAt,
-                        status: 'completed',
+                        status: "completed",
                     },
                     blockchain: {
                         confirmed: true,
@@ -980,25 +1248,27 @@ class PaymentController {
             }
             catch (blockchainError) {
                 // Update transaction as failed
-                transaction.status = 'failed';
-                transaction.failureReason = blockchainError instanceof Error ?
-                    blockchainError.message : 'Blockchain verification failed';
+                transaction.status = "failed";
+                transaction.failureReason =
+                    blockchainError instanceof Error
+                        ? blockchainError.message
+                        : "Blockchain verification failed";
                 await transaction.save();
-                logger_1.default.error('Blockchain verification failed:', {
+                logger_1.default.error("Blockchain verification failed:", {
                     error: blockchainError,
                     txHash,
                     transactionId: transaction._id,
                 });
                 return res.status(400).json({
                     success: false,
-                    error: 'Unable to verify transaction on blockchain',
+                    error: "Unable to verify transaction on blockchain",
                     code: constants_1.ERROR_CODES.BLOCKCHAIN_ERROR,
                 });
             }
         }
         catch (error) {
-            logger_1.default.error('Payment completion error:', {
-                error: error instanceof Error ? error.message : 'Unknown error',
+            logger_1.default.error("Payment completion error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
                 userId: req.user?.id,
                 body: req.body,
             });
@@ -1009,7 +1279,8 @@ class PaymentController {
         try {
             const userId = req.user.id;
             const page = parseInt(req.query.page) || 1;
-            const limit = Math.min(parseInt(req.query.limit) || constants_1.CONSTANTS.DEFAULT_PAGE_SIZE, constants_1.CONSTANTS.MAX_PAGE_SIZE);
+            const limit = Math.min(parseInt(req.query.limit) ||
+                constants_1.CONSTANTS.DEFAULT_PAGE_SIZE, constants_1.CONSTANTS.MAX_PAGE_SIZE);
             const result = await paymentService.getTransactionHistory(userId, page, limit);
             res.json({
                 success: true,
@@ -1027,7 +1298,7 @@ class PaymentController {
             if (!transaction) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Transaction not found',
+                    error: "Transaction not found",
                 });
             }
             res.json({
@@ -1056,7 +1327,7 @@ class PaymentController {
     async getPaymentStats(req, res, next) {
         try {
             const userId = req.user.id;
-            const period = req.query.period || 'month';
+            const period = req.query.period || "month";
             const cardUuid = req.query.cardUuid;
             // Use service to get payment stats (delegate the heavy logic to service)
             const stats = await paymentService.getPaymentStats(userId, period, cardUuid);
@@ -1066,12 +1337,13 @@ class PaymentController {
             });
         }
         catch (error) {
-            logger_1.default.error('Payment stats error:', {
-                error: error instanceof Error ? error.message : 'Unknown error',
+            logger_1.default.error("Payment stats error:", {
+                error: error instanceof Error ? error.message : "Unknown error",
                 userId: req.user?.id,
                 period: req.query.period,
             });
-            if (error instanceof Error && error.message.includes('Invalid period')) {
+            if (error instanceof Error &&
+                error.message.includes("Invalid period")) {
                 return res.status(400).json({
                     success: false,
                     error: error.message,
@@ -1091,7 +1363,7 @@ class PaymentController {
             const transaction = await paymentService.cancelTransaction(id, user.id, reason);
             res.json({
                 success: true,
-                message: 'Transaction cancelled successfully',
+                message: "Transaction cancelled successfully",
                 transaction: {
                     id: transaction._id,
                     status: transaction.status,
@@ -1101,21 +1373,21 @@ class PaymentController {
         }
         catch (error) {
             if (error instanceof Error) {
-                if (error.message.includes('not found')) {
+                if (error.message.includes("not found")) {
                     return res.status(404).json({
                         success: false,
                         error: error.message,
                         code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                     });
                 }
-                if (error.message.includes('Unauthorized')) {
+                if (error.message.includes("Unauthorized")) {
                     return res.status(403).json({
                         success: false,
                         error: error.message,
                         code: constants_1.ERROR_CODES.UNAUTHORIZED,
                     });
                 }
-                if (error.message.includes('Cannot cancel')) {
+                if (error.message.includes("Cannot cancel")) {
                     return res.status(400).json({
                         success: false,
                         error: error.message,
@@ -1123,6 +1395,80 @@ class PaymentController {
                     });
                 }
             }
+            next(error);
+        }
+    }
+    // Merchant creates a QR payment request (no user yet)
+    async createMerchantPaymentRequest(req, res, next) {
+        try {
+            const { amount, description } = req.body;
+            const merchantAuth = req.user; // Using generic auth with role merchant
+            // Validate merchant identity
+            const merchant = (await Merchant_model_1.Merchant.findOne({
+                merchantId: merchantAuth?.merchantId,
+            })) || (await Merchant_model_1.Merchant.findById(merchantAuth?.id));
+            if (!merchant || !merchant.isActive) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Unauthorized merchant",
+                    code: constants_1.ERROR_CODES.UNAUTHORIZED,
+                });
+            }
+            // Create a request record using Transaction model
+            const request = await Transaction_model_1.Transaction.create({
+                type: "payment",
+                amount,
+                currency: "SUI",
+                status: "requested",
+                merchantId: merchant._id,
+                merchantName: merchant.merchantName,
+                metadata: {
+                    request: true,
+                    description,
+                    createdAt: new Date(),
+                },
+            });
+            return res.status(201).json({
+                success: true,
+                message: "Merchant payment request created",
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    qrPayload: {
+                        requestId: request._id,
+                        amount: request.amount,
+                        merchantId: merchant.merchantId,
+                    },
+                },
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    // Get merchant payment request status
+    async getMerchantPaymentRequest(req, res, next) {
+        try {
+            const { id } = req.params;
+            const request = await Transaction_model_1.Transaction.findById(id);
+            if (!request) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Request not found",
+                });
+            }
+            return res.json({
+                success: true,
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    merchantName: request.merchantName,
+                },
+            });
+        }
+        catch (error) {
             next(error);
         }
     }
@@ -1134,7 +1480,7 @@ class PaymentController {
             const result = await paymentService.retryTransaction(id, user.id);
             res.json({
                 success: true,
-                message: 'Payment retry initiated',
+                message: "Payment retry initiated",
                 originalTransactionId: id,
                 newTransaction: {
                     id: result.newTransaction._id,
@@ -1145,21 +1491,21 @@ class PaymentController {
         }
         catch (error) {
             if (error instanceof Error) {
-                if (error.message.includes('not found')) {
+                if (error.message.includes("not found")) {
                     return res.status(404).json({
                         success: false,
                         error: error.message,
                         code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                     });
                 }
-                if (error.message.includes('Unauthorized')) {
+                if (error.message.includes("Unauthorized")) {
                     return res.status(403).json({
                         success: false,
                         error: error.message,
                         code: constants_1.ERROR_CODES.UNAUTHORIZED,
                     });
                 }
-                if (error.message.includes('Only failed')) {
+                if (error.message.includes("Only failed")) {
                     return res.status(400).json({
                         success: false,
                         error: error.message,
@@ -1176,19 +1522,22 @@ class PaymentController {
             // Get user's cards
             const cards = await Card_model_1.Card.find({
                 userId: user.id,
-                isActive: true
-            }).select('cardUuid cardType cardNumber isActive isPrimary lastUsed usageCount');
+                isActive: true,
+            }).select("cardUuid cardType cardNumber isActive isPrimary lastUsed usageCount");
             // Get wallet balance
             let walletBalance = 0;
             try {
                 const balance = await (0, sui_config_1.getSuiClient)().getBalance({
                     owner: user.walletAddress,
-                    coinType: '0x2::sui::SUI',
+                    coinType: "0x2::sui::SUI",
                 });
-                walletBalance = parseFloat(balance.totalBalance) / 1_000_000_000;
+                walletBalance =
+                    parseFloat(balance.totalBalance) / 1_000_000_000;
             }
             catch (error) {
-                logger_1.default.warn('Unable to fetch wallet balance', { userId: user.id });
+                logger_1.default.warn("Unable to fetch wallet balance", {
+                    userId: user.id,
+                });
             }
             res.json({
                 success: true,
@@ -1196,9 +1545,9 @@ class PaymentController {
                     wallet: {
                         address: user.walletAddress,
                         balance: walletBalance,
-                        currency: 'SUI',
+                        currency: "SUI",
                     },
-                    cards: cards.map(card => ({
+                    cards: cards.map((card) => ({
                         uuid: card.cardUuid,
                         type: card.cardType,
                         last4: card.cardNumber.slice(-4),
@@ -1224,14 +1573,14 @@ class PaymentController {
         try {
             const { id } = req.params;
             const user = req.user;
-            const format = req.query.format || 'json';
+            const format = req.query.format || "json";
             const transaction = await Transaction_model_1.Transaction.findById(id)
-                .populate('merchantId', 'merchantName')
-                .populate('cardId', 'cardType cardNumber');
+                .populate("merchantId", "merchantName")
+                .populate("cardId", "cardType cardNumber");
             if (!transaction) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Transaction not found',
+                    error: "Transaction not found",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -1239,7 +1588,7 @@ class PaymentController {
             if (transaction.userId.toString() !== user.id) {
                 return res.status(403).json({
                     success: false,
-                    error: 'Unauthorized to view this receipt',
+                    error: "Unauthorized to view this receipt",
                     code: constants_1.ERROR_CODES.UNAUTHORIZED,
                 });
             }
@@ -1252,25 +1601,29 @@ class PaymentController {
                 totalAmount: transaction.totalAmount,
                 currency: transaction.currency,
                 merchant: transaction.merchantName,
-                card: transaction.cardId ? {
-                    type: transaction.cardId.cardType,
-                    last4: transaction.cardId.cardNumber?.slice(-4),
-                } : null,
+                card: transaction.cardId
+                    ? {
+                        type: transaction.cardId.cardType,
+                        last4: transaction.cardId.cardNumber?.slice(-4),
+                    }
+                    : null,
                 timestamps: {
                     created: transaction.createdAt,
                     completed: transaction.completedAt,
                 },
-                blockchain: transaction.txHash ? {
-                    network: 'Sui Testnet',
-                    explorerUrl: `https://suiscan.xyz/testnet/tx/${transaction.txHash}`,
-                } : null,
+                blockchain: transaction.txHash
+                    ? {
+                        network: "Sui Testnet",
+                        explorerUrl: `https://suiscan.xyz/testnet/tx/${transaction.txHash}`,
+                    }
+                    : null,
                 metadata: transaction.metadata,
             };
-            if (format === 'pdf') {
+            if (format === "pdf") {
                 // TODO: Generate PDF receipt
                 return res.status(501).json({
                     success: false,
-                    error: 'PDF format not yet implemented',
+                    error: "PDF format not yet implemented",
                 });
             }
             res.json({
@@ -1288,7 +1641,7 @@ class PaymentController {
             if (!txHash) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Transaction hash is required',
+                    error: "Transaction hash is required",
                     code: constants_1.ERROR_CODES.VALIDATION_ERROR,
                 });
             }
@@ -1314,11 +1667,13 @@ class PaymentController {
                         gasUsed: blockchainTx?.effects?.gasUsed,
                         explorerUrl: `https://suiscan.xyz/testnet/tx/${txHash}`,
                     },
-                    transaction: dbTransaction ? {
-                        id: dbTransaction._id,
-                        status: dbTransaction.status,
-                        amount: dbTransaction.amount,
-                    } : null,
+                    transaction: dbTransaction
+                        ? {
+                            id: dbTransaction._id,
+                            status: dbTransaction.status,
+                            amount: dbTransaction.amount,
+                        }
+                        : null,
                 });
             }
             catch (blockchainError) {
@@ -1326,7 +1681,7 @@ class PaymentController {
                     success: true,
                     validation: {
                         exists: false,
-                        error: 'Transaction not found on blockchain',
+                        error: "Transaction not found on blockchain",
                     },
                 });
             }

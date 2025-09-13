@@ -12,6 +12,7 @@ import { socketService } from "../services/socket.service";
 import { v4 as uuidv4 } from "uuid";
 import { Transaction as SuiTransaction } from "@mysten/sui/transactions";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { decryptPrivateKey } from "../services/encryption.service";
 import logger from "../utils/logger";
 
 const paymentService = new PaymentService();
@@ -812,8 +813,7 @@ export class PaymentController {
         next: NextFunction
     ): Promise<void | Response> {
         try {
-            const { cardUuid, amount, merchantId, terminalId } = req.body;
-            const user = (req as any).user;
+            const { cardUuid, amount, merchantId, terminalId, pin } = req.body;
 
             // Input validation
             if (!cardUuid || !amount || !merchantId || !terminalId) {
@@ -822,6 +822,40 @@ export class PaymentController {
                     error: "Missing required fields",
                     code: ERROR_CODES.VALIDATION_ERROR,
                 });
+            }
+
+            // Find card and populate user (fresh from DB)
+            const card = await Card.findOne({ cardUuid }).populate('userId');
+            if (!card) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Card not found",
+                    code: ERROR_CODES.INVALID_CARD,
+                });
+            }
+
+            // Get user directly from DB to ensure fresh data including pinHash
+            const user = await User.findById(card.userId).select('+pinHash');
+            if (!user) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User not found",
+                    code: ERROR_CODES.INVALID_INPUT,
+                });
+            }
+
+            // Verify PIN if provided
+            if (pin) {
+                console.log('User data:', { _id: user._id, email: user.email, hasPinHash: !!user.pinHash });
+                const isPinValid = await user.comparePin!(pin);
+                console.log('PIN validation result:', isPinValid);
+                if (!isPinValid) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Invalid PIN",
+                        code: ERROR_CODES.INVALID_INPUT,
+                    });
+                }
             }
 
             // Check if user has a wallet address
@@ -880,14 +914,27 @@ export class PaymentController {
                 throw new Error("User wallet not configured");
             }
 
-            // Process blockchain transaction directly
+            // Process blockchain transaction directly - handle private key formats
             let keypair: Ed25519Keypair;
-            if (userWithKey.encryptedPrivateKey.startsWith("suiprivkey1")) {
-                keypair = Ed25519Keypair.fromSecretKey(
-                    userWithKey.encryptedPrivateKey
-                );
+            if (userWithKey.encryptedPrivateKey.startsWith('suiprivkey1')) {
+                // It's a bech32 format, use directly
+                keypair = Ed25519Keypair.fromSecretKey(userWithKey.encryptedPrivateKey);
             } else {
-                throw new Error("Private key format not supported");
+                // It's encrypted base64, decrypt first
+                const privateKey = decryptPrivateKey(userWithKey.encryptedPrivateKey);
+                const keyBuffer = Buffer.from(privateKey, 'base64');
+                // Ed25519 private key should be 32 bytes, take first 32 if longer
+                const secretKey = keyBuffer.length > 32 ? keyBuffer.subarray(0, 32) : keyBuffer;
+                keypair = Ed25519Keypair.fromSecretKey(secretKey);
+
+                // Debug: Check if address matches
+                const derivedAddress = keypair.getPublicKey().toSuiAddress();
+                console.log('DB Address:', user.walletAddress);
+                console.log('Derived Address:', derivedAddress);
+                console.log('Addresses match:', user.walletAddress === derivedAddress);
+
+                // Use derived address for transaction consistency
+                user.walletAddress = derivedAddress;
             }
 
             const amountInMist = Math.floor(amount * 1_000_000_000);

@@ -36,6 +36,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Merchant = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const merchantSchema = new mongoose_1.Schema({
+    userId: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+        unique: true,
+        index: true,
+    },
     merchantId: {
         type: String,
         required: true,
@@ -109,8 +116,8 @@ const merchantSchema = new mongoose_1.Schema({
     },
     settlementPeriod: {
         type: String,
-        enum: ['daily', 'weekly', 'monthly'],
-        default: 'daily',
+        enum: ["daily", "weekly", "monthly"],
+        default: "daily",
     },
     nextSettlementDate: {
         type: Date,
@@ -124,11 +131,33 @@ const merchantSchema = new mongoose_1.Schema({
         type: Number,
         default: 0,
     },
+    terminals: [{
+            terminalId: { type: String, required: true },
+            terminalName: { type: String, required: true },
+            location: { type: String, default: "" },
+            terminalType: {
+                type: String,
+                enum: ["MOBILE", "FIXED", "KIOSK", "ONLINE"],
+                default: "FIXED"
+            },
+            features: [{ type: String }],
+            isActive: { type: Boolean, default: true },
+            settings: {
+                maxAmount: { type: Number, default: 5000000 },
+                requireSignature: { type: Boolean, default: false },
+                requirePINAmount: { type: Number, default: 50000 },
+                timeout: { type: Number, default: 300 }
+            },
+            createdAt: { type: Date, default: Date.now },
+            lastUsed: Date,
+            updatedAt: Date,
+            deactivatedAt: Date
+        }],
     metadata: mongoose_1.Schema.Types.Mixed,
 }, {
     timestamps: true,
 });
 // Text search index
-merchantSchema.index({ merchantName: 'text', businessType: 'text' });
-exports.Merchant = mongoose_1.default.model('Merchant', merchantSchema);
+merchantSchema.index({ merchantName: "text", businessType: "text" });
+exports.Merchant = mongoose_1.default.model("Merchant", merchantSchema);
 //# sourceMappingURL=Merchant.model.js.map

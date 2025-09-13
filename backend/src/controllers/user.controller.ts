@@ -114,22 +114,165 @@ export class UserController {
   }
 
   // PIN management
-  async setPin(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async setPin(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
-    } catch (error) { next(error); }
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const { pin, confirmPin } = req.body;
+
+      if (!pin || !confirmPin) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN and confirmPin are required'
+        });
+      }
+
+      if (pin !== confirmPin) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN and confirmPin do not match'
+        });
+      }
+
+      // Validate PIN format (4 digits)
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN must be 4 digits'
+        });
+      }
+
+      // Get user document with setPin method and pinHash field
+      const user = await User.findById(req.user._id).select('+pinHash');
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      // Set PIN using model method
+      console.log('Before setPin - user.pinHash:', user.pinHash);
+      await user.setPin!(pin);
+      console.log('After setPin - user.pinHash:', !!user.pinHash);
+      await user.save();
+      console.log('After save - user.pinHash:', !!user.pinHash);
+
+      return res.json({
+        success: true,
+        message: 'PIN set successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
-  async changePin(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async changePin(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
-    } catch (error) { next(error); }
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const { currentPin, newPin, confirmNewPin } = req.body;
+
+      if (!currentPin || !newPin || !confirmNewPin) {
+        return res.status(400).json({
+          success: false,
+          error: 'currentPin, newPin, and confirmNewPin are required'
+        });
+      }
+
+      if (newPin !== confirmNewPin) {
+        return res.status(400).json({
+          success: false,
+          error: 'New PIN and confirm PIN do not match'
+        });
+      }
+
+      // Validate new PIN format (4 digits)
+      if (!/^\d{4}$/.test(newPin)) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN must be 4 digits'
+        });
+      }
+
+      // Get user document
+      const user = await User.findById(req.user._id);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      // Verify current PIN
+      const isCurrentPinValid = await user.comparePin!(currentPin);
+      if (!isCurrentPinValid) {
+        return res.status(400).json({
+          success: false,
+          error: 'Current PIN is incorrect'
+        });
+      }
+
+      // Set new PIN
+      await user.setPin!(newPin);
+      await user.save();
+
+      return res.json({
+        success: true,
+        message: 'PIN changed successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
-  async verifyPin(_req: Request, res: Response, next: NextFunction): Promise<void | Response> {
+  async verifyPin(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response> {
     try {
-      res.json({ success: true, message: 'User controller method not implemented yet' });
-    } catch (error) { next(error); }
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const { pin } = req.body;
+
+      if (!pin) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN is required'
+        });
+      }
+
+      // Validate PIN format (4 digits)
+      if (!/^\d{4}$/.test(pin)) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN must be 4 digits'
+        });
+      }
+
+      // Get user document with pinHash field
+      const user = await User.findById(req.user._id).select('+pinHash');
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      // Check if PIN is set
+      console.log('PIN verify - user._id:', user._id, 'user.pinHash exists:', !!user.pinHash);
+      if (!user.pinHash) {
+        return res.status(400).json({
+          success: false,
+          error: 'PIN not set'
+        });
+      }
+
+      // Verify PIN
+      const isPinValid = await user.comparePin!(pin);
+
+      return res.json({
+        success: true,
+        valid: isPinValid,
+        message: isPinValid ? 'PIN is correct' : 'PIN is incorrect'
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   // Other methods (KYC, notifications, sessions, stats, etc.)

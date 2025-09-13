@@ -11,8 +11,8 @@ export const posValidators = {
       .isUUID()
       .withMessage('Valid card UUID is required'),
     body('amount')
-      .isFloat({ min: 1000 }) // Minimum 1,000 VND
-      .withMessage('Amount must be at least 1,000 VND'),
+      .isFloat({ min: 0.01 }) // Minimum 0.01 for blockchain testing
+      .withMessage('Amount must be greater than 0'),
     body('merchantId')
       .notEmpty()
       .isString()
@@ -182,8 +182,8 @@ export const posValidators = {
       .withMessage('Settings must be an object'),
     body('settings.maxAmount')
       .optional()
-      .isFloat({ min: 1000 })
-      .withMessage('Max amount must be at least 1,000 VND'),
+      .isFloat({ min: 0.01 })
+      .withMessage('Max amount must be greater than 0'),
     body('settings.requireSignature')
       .optional()
       .isBoolean()

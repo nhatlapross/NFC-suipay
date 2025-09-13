@@ -1,5 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from "express";
 export declare class PaymentController {
+    createPaymentIntent(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    confirmPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    getPaymentStatus(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     validatePayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     validateNFCPayment(req: Request, res: Response, _next: NextFunction): Promise<void | Response>;
     processNFCPaymentAsync(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
@@ -13,6 +16,8 @@ export declare class PaymentController {
     refundTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getPaymentStats(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     cancelPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    createMerchantPaymentRequest(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    getMerchantPaymentRequest(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     retryPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getPaymentMethods(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getTransactionReceipt(req: Request, res: Response, next: NextFunction): Promise<void | Response>;

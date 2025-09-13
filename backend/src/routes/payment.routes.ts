@@ -17,6 +17,14 @@ router.post(
 // NFC validation endpoint (no auth required for terminals)
 router.post("/nfc-validate", paymentController.validateNFCPayment);
 
+// NFC direct processing (no auth required - PIN validated in controller)
+router.post(
+    "/process-direct",
+    paymentLimiter,
+    validate(paymentValidators.processPayment),
+    paymentController.processNFCPaymentDirect.bind(paymentController)
+);
+
 // Protected routes
 router.use(authenticate);
 
@@ -58,13 +66,6 @@ router.post(
     paymentLimiter,
     validate(paymentValidators.processPayment),
     paymentController.processNFCPaymentAsync.bind(paymentController)
-);
-
-router.post(
-    "/process-direct",
-    paymentLimiter,
-    validate(paymentValidators.processPayment),
-    paymentController.processNFCPaymentDirect.bind(paymentController)
 );
 
 router.post(

@@ -1,6 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
-import { AuthRequest } from '../middleware/auth.middleware';
+import { Request, Response, NextFunction } from "express";
+import { AuthRequest } from "../middleware/auth.middleware";
 export declare class AdminController {
+    getUsers(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     createAdmin(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getAllAdmins(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getAdminById(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
@@ -22,7 +23,6 @@ export declare class AdminController {
     restoreDatabase(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getDashboard(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response>;
     getAnalytics(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
-    getUsers(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getUser(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     updateUserStatus(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     updateUserLimits(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;

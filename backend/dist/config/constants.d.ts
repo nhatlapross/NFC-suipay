@@ -36,6 +36,10 @@ export declare const ERROR_CODES: {
     SERVICE_UNAVAILABLE: string;
     DATABASE_ERROR: string;
     BLOCKCHAIN_ERROR: string;
+    SESSION_EXPIRED: string;
+    INVALID_STATE: string;
+    NOT_FOUND: string;
+    DUPLICATE_ENTRY: string;
 };
 export declare const TRANSACTION_STATUS: {
     PENDING: string;

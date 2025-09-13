@@ -110,6 +110,7 @@ app.get('/health', (_req, res) => {
 // API Routes
 app.use('/api', routes_1.default);
 app.use('/api/fast-payment', fastPayment_routes_1.default);
+// Merchant tap-to-pay direct processing endpoints (API key based)
 // Static files
 app.use('/uploads', express_1.default.static('uploads'));
 // Error handling middleware (must be last)

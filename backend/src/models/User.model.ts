@@ -73,12 +73,12 @@ const userSchema = new Schema<IUser>(
     },
     dailyLimit: {
       type: Number,
-      default: 1000,
+      default: 5000, // Match CONSTANTS.DAILY_AMOUNT_LIMIT
       min: 0,
     },
     monthlyLimit: {
       type: Number,
-      default: 10000,
+      default: 50000, // Match CONSTANTS.MONTHLY_AMOUNT_LIMIT
       min: 0,
     },
     status: {

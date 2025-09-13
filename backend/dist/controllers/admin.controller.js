@@ -7,9 +7,33 @@ exports.adminController = exports.AdminController = void 0;
 const admin_service_1 = require("../services/admin.service");
 const logger_1 = __importDefault(require("../utils/logger"));
 class AdminController {
+    async getUsers(req, res, next) {
+        try {
+            const { page, limit, status, role, kycStatus } = req.query;
+            const filters = {
+                page: page ? parseInt(page) : undefined,
+                limit: limit ? parseInt(limit) : undefined,
+                status: status,
+                role: role,
+                kycStatus: kycStatus,
+            };
+            const result = await admin_service_1.adminService.getUsers(filters);
+            res.json({
+                success: true,
+                data: result,
+            });
+        }
+        catch (error) {
+            logger_1.default.error("Error in getUsers controller:", error);
+            next(error);
+        }
+    }
     async createAdmin(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -17,7 +41,10 @@ class AdminController {
     }
     async getAllAdmins(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -25,7 +52,10 @@ class AdminController {
     }
     async getAdminById(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -33,7 +63,10 @@ class AdminController {
     }
     async updateAdmin(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -41,7 +74,10 @@ class AdminController {
     }
     async deleteAdmin(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -49,7 +85,10 @@ class AdminController {
     }
     async updateAdminStatus(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -60,11 +99,11 @@ class AdminController {
             const healthMetrics = await admin_service_1.adminService.getSystemHealthMetrics();
             return res.json({
                 success: true,
-                data: healthMetrics
+                data: healthMetrics,
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting system stats:', error);
+            logger_1.default.error("Error getting system stats:", error);
             next(error);
         }
     }
@@ -72,26 +111,34 @@ class AdminController {
         try {
             const healthMetrics = await admin_service_1.adminService.getSystemHealthMetrics();
             // Determine overall system health
-            const successRate = healthMetrics.transactionMetrics[0]?.successful /
-                (healthMetrics.transactionMetrics[0]?.total || 1) * 100;
+            const successRate = (healthMetrics.transactionMetrics[0]?.successful /
+                (healthMetrics.transactionMetrics[0]?.total || 1)) *
+                100;
             const systemHealth = {
-                status: successRate >= 95 ? 'healthy' : successRate >= 85 ? 'warning' : 'critical',
+                status: successRate >= 95
+                    ? "healthy"
+                    : successRate >= 85
+                        ? "warning"
+                        : "critical",
                 successRate: Math.round(successRate * 100) / 100,
-                ...healthMetrics
+                ...healthMetrics,
             };
             return res.json({
                 success: true,
-                data: systemHealth
+                data: systemHealth,
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting system health:', error);
+            logger_1.default.error("Error getting system health:", error);
             next(error);
         }
     }
     async getSystemSettings(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -99,7 +146,10 @@ class AdminController {
     }
     async updateSystemSettings(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -107,7 +157,10 @@ class AdminController {
     }
     async getAuditLogs(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -115,7 +168,10 @@ class AdminController {
     }
     async getAllAnnouncements(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -123,7 +179,10 @@ class AdminController {
     }
     async createAnnouncement(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -131,7 +190,10 @@ class AdminController {
     }
     async updateAnnouncement(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -139,7 +201,10 @@ class AdminController {
     }
     async deleteAnnouncement(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -147,7 +212,10 @@ class AdminController {
     }
     async exportData(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -155,7 +223,10 @@ class AdminController {
     }
     async importData(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -163,7 +234,10 @@ class AdminController {
     }
     async backupDatabase(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -171,7 +245,10 @@ class AdminController {
     }
     async restoreDatabase(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -180,32 +257,29 @@ class AdminController {
     // === PAYMENT MONITORING DASHBOARD ===
     async getDashboard(req, res, next) {
         try {
-            logger_1.default.info('Admin accessing payment dashboard', { adminId: req.user?._id });
+            logger_1.default.info("Admin accessing payment dashboard", {
+                adminId: req.user?._id,
+            });
             const dashboardData = await admin_service_1.adminService.getPaymentDashboard();
             return res.json({
                 success: true,
                 data: {
                     ...dashboardData,
-                    timestamp: new Date()
-                }
+                    timestamp: new Date(),
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting admin dashboard:', error);
+            logger_1.default.error("Error getting admin dashboard:", error);
             next(error);
         }
     }
     async getAnalytics(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
-        }
-        catch (error) {
-            next(error);
-        }
-    }
-    async getUsers(_req, res, next) {
-        try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -213,7 +287,10 @@ class AdminController {
     }
     async getUser(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -221,7 +298,10 @@ class AdminController {
     }
     async updateUserStatus(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -229,7 +309,10 @@ class AdminController {
     }
     async updateUserLimits(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -237,7 +320,10 @@ class AdminController {
     }
     async deleteUser(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -253,14 +339,16 @@ class AdminController {
                     merchants: merchantHealth,
                     summary: {
                         total: merchantHealth.length,
-                        healthy: merchantHealth.filter(m => m.isHealthy).length,
-                        unhealthy: merchantHealth.filter(m => !m.isHealthy).length
-                    }
-                }
+                        healthy: merchantHealth.filter((m) => m.isHealthy)
+                            .length,
+                        unhealthy: merchantHealth.filter((m) => !m.isHealthy)
+                            .length,
+                    },
+                },
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting merchants:', error);
+            logger_1.default.error("Error getting merchants:", error);
             next(error);
         }
     }
@@ -271,22 +359,25 @@ class AdminController {
             if (merchantHealth.length === 0) {
                 return res.status(404).json({
                     success: false,
-                    error: 'Merchant not found or no transaction data'
+                    error: "Merchant not found or no transaction data",
                 });
             }
             return res.json({
                 success: true,
-                data: merchantHealth[0]
+                data: merchantHealth[0],
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting merchant:', error);
+            logger_1.default.error("Error getting merchant:", error);
             next(error);
         }
     }
     async updateMerchantStatus(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -294,7 +385,10 @@ class AdminController {
     }
     async updateMerchantLimits(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -327,11 +421,11 @@ class AdminController {
             const result = await admin_service_1.adminService.getTransactions(filter, page, limit);
             return res.json({
                 success: true,
-                data: result
+                data: result,
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting transactions:', error);
+            logger_1.default.error("Error getting transactions:", error);
             next(error);
         }
     }
@@ -341,15 +435,16 @@ class AdminController {
             const transaction = await admin_service_1.adminService.getTransactionById(transactionId);
             return res.json({
                 success: true,
-                data: transaction
+                data: transaction,
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting transaction:', error);
-            if (error instanceof Error && error.message === 'Transaction not found') {
+            logger_1.default.error("Error getting transaction:", error);
+            if (error instanceof Error &&
+                error.message === "Transaction not found") {
                 return res.status(404).json({
                     success: false,
-                    error: 'Transaction not found'
+                    error: "Transaction not found",
                 });
             }
             next(error);
@@ -363,28 +458,30 @@ class AdminController {
             if (!adminId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Admin authentication required'
+                    error: "Admin authentication required",
                 });
             }
             const result = await admin_service_1.adminService.forceRefundTransaction(transactionId, reason, adminId);
-            logger_1.default.info('Admin processed refund', {
+            logger_1.default.info("Admin processed refund", {
                 transactionId,
                 adminId,
                 reason,
-                refundAmount: result.refundAmount
+                refundAmount: result.refundAmount,
             });
             return res.json({
                 success: true,
-                message: 'Refund processed successfully',
-                data: result
+                message: "Refund processed successfully",
+                data: result,
             });
         }
         catch (error) {
-            logger_1.default.error('Error processing refund:', error);
-            if (error instanceof Error && (error.message.includes('not found') || error.message.includes('refund'))) {
+            logger_1.default.error("Error processing refund:", error);
+            if (error instanceof Error &&
+                (error.message.includes("not found") ||
+                    error.message.includes("refund"))) {
                 return res.status(400).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
             }
             next(error);
@@ -398,22 +495,23 @@ class AdminController {
             if (!adminId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Admin authentication required'
+                    error: "Admin authentication required",
                 });
             }
             const transaction = await admin_service_1.adminService.updateTransactionStatus(transactionId, status, reason, adminId);
             return res.json({
                 success: true,
-                message: 'Transaction status updated successfully',
-                data: transaction
+                message: "Transaction status updated successfully",
+                data: transaction,
             });
         }
         catch (error) {
-            logger_1.default.error('Error updating transaction status:', error);
-            if (error instanceof Error && error.message === 'Transaction not found') {
+            logger_1.default.error("Error updating transaction status:", error);
+            if (error instanceof Error &&
+                error.message === "Transaction not found") {
                 return res.status(404).json({
                     success: false,
-                    error: 'Transaction not found'
+                    error: "Transaction not found",
                 });
             }
             next(error);
@@ -425,11 +523,11 @@ class AdminController {
             const cardHealthStatus = await admin_service_1.adminService.getCardHealthStatus();
             return res.json({
                 success: true,
-                data: cardHealthStatus
+                data: cardHealthStatus,
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting cards:', error);
+            logger_1.default.error("Error getting cards:", error);
             next(error);
         }
     }
@@ -439,15 +537,15 @@ class AdminController {
             const cardDetails = await admin_service_1.adminService.getCardById(cardId);
             return res.json({
                 success: true,
-                data: cardDetails
+                data: cardDetails,
             });
         }
         catch (error) {
-            logger_1.default.error('Error getting card:', error);
-            if (error instanceof Error && error.message === 'Card not found') {
+            logger_1.default.error("Error getting card:", error);
+            if (error instanceof Error && error.message === "Card not found") {
                 return res.status(404).json({
                     success: false,
-                    error: 'Card not found'
+                    error: "Card not found",
                 });
             }
             next(error);
@@ -461,36 +559,36 @@ class AdminController {
             if (!adminId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Admin authentication required'
+                    error: "Admin authentication required",
                 });
             }
-            if (status === 'blocked') {
-                const result = await admin_service_1.adminService.blockCard(cardId, 'Admin status change', adminId);
+            if (status === "blocked") {
+                const result = await admin_service_1.adminService.blockCard(cardId, "Admin status change", adminId);
                 return res.json({
                     success: true,
-                    message: 'Card blocked successfully',
-                    data: result
+                    message: "Card blocked successfully",
+                    data: result,
                 });
             }
-            else if (status === 'active') {
+            else if (status === "active") {
                 const result = await admin_service_1.adminService.unblockCard(cardId, adminId);
                 return res.json({
                     success: true,
-                    message: 'Card activated successfully',
-                    data: result
+                    message: "Card activated successfully",
+                    data: result,
                 });
             }
             return res.status(400).json({
                 success: false,
-                error: 'Invalid status. Use blockCard or unblockCard endpoints.'
+                error: "Invalid status. Use blockCard or unblockCard endpoints.",
             });
         }
         catch (error) {
-            logger_1.default.error('Error updating card status:', error);
-            if (error instanceof Error && error.message === 'Card not found') {
+            logger_1.default.error("Error updating card status:", error);
+            if (error instanceof Error && error.message === "Card not found") {
                 return res.status(404).json({
                     success: false,
-                    error: 'Card not found'
+                    error: "Card not found",
                 });
             }
             next(error);
@@ -504,23 +602,23 @@ class AdminController {
             if (!adminId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Admin authentication required'
+                    error: "Admin authentication required",
                 });
             }
             const result = await admin_service_1.adminService.blockCard(cardId, reason, adminId);
-            logger_1.default.info('Admin blocked card', { cardId, reason, adminId });
+            logger_1.default.info("Admin blocked card", { cardId, reason, adminId });
             return res.json({
                 success: true,
-                message: 'Card blocked successfully',
-                data: result
+                message: "Card blocked successfully",
+                data: result,
             });
         }
         catch (error) {
-            logger_1.default.error('Error blocking card:', error);
-            if (error instanceof Error && error.message === 'Card not found') {
+            logger_1.default.error("Error blocking card:", error);
+            if (error instanceof Error && error.message === "Card not found") {
                 return res.status(404).json({
                     success: false,
-                    error: 'Card not found'
+                    error: "Card not found",
                 });
             }
             next(error);
@@ -533,23 +631,23 @@ class AdminController {
             if (!adminId) {
                 return res.status(401).json({
                     success: false,
-                    error: 'Admin authentication required'
+                    error: "Admin authentication required",
                 });
             }
             const result = await admin_service_1.adminService.unblockCard(cardId, adminId);
-            logger_1.default.info('Admin unblocked card', { cardId, adminId });
+            logger_1.default.info("Admin unblocked card", { cardId, adminId });
             return res.json({
                 success: true,
-                message: 'Card unblocked successfully',
-                data: result
+                message: "Card unblocked successfully",
+                data: result,
             });
         }
         catch (error) {
-            logger_1.default.error('Error unblocking card:', error);
-            if (error instanceof Error && error.message === 'Card not found') {
+            logger_1.default.error("Error unblocking card:", error);
+            if (error instanceof Error && error.message === "Card not found") {
                 return res.status(404).json({
                     success: false,
-                    error: 'Card not found'
+                    error: "Card not found",
                 });
             }
             next(error);
@@ -557,7 +655,10 @@ class AdminController {
     }
     async getKYCRequests(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -565,7 +666,10 @@ class AdminController {
     }
     async getKYCRequest(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -573,7 +677,10 @@ class AdminController {
     }
     async approveKYC(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -581,7 +688,10 @@ class AdminController {
     }
     async rejectKYC(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -589,7 +699,10 @@ class AdminController {
     }
     async getAuditLog(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -597,7 +710,10 @@ class AdminController {
     }
     async enableMaintenance(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -605,7 +721,10 @@ class AdminController {
     }
     async disableMaintenance(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);
@@ -613,7 +732,10 @@ class AdminController {
     }
     async clearCache(_req, res, next) {
         try {
-            res.json({ success: true, message: 'Admin controller method not implemented yet' });
+            res.json({
+                success: true,
+                message: "Admin controller method not implemented yet",
+            });
         }
         catch (error) {
             next(error);

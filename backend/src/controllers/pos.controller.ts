@@ -5,8 +5,52 @@ import { Transaction } from '../models/Transaction.model';
 import { getCached, setCached } from '../config/redis.config';
 import { CONSTANTS, ERROR_CODES } from '../config/constants';
 import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs';
 import logger from '../utils/logger';
+
+// Helper function for auth methods
+function getRequiredAuthMethods(amount: number, card: any): string[] {
+  const methods = [];
+
+  // For blockchain testing, always require PIN for security
+  if (amount < 500000) { // < 500k VND
+    methods.push('PIN');
+  } else { // >= 500k VND
+    methods.push('PIN');
+    if (amount > 1000000) { // > 1M VND
+      methods.push('SIGNATURE');
+    }
+  }
+
+  // Check card-specific requirements
+  if (card.requiresPIN) {
+    if (!methods.includes('PIN')) methods.push('PIN');
+  }
+
+  return methods;
+}
+
+// Helper function for amount formatting
+function formatAmount(amount: number): string {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(amount);
+}
+
+// Helper function for PIN verification
+async function verifyPIN(user: any, pin: string): Promise<boolean> {
+  try {
+    if (!user.pinHash) {
+      return false;
+    }
+
+    // Use the User model's comparePin method
+    return await user.comparePin(pin);
+  } catch (error) {
+    logger.error('PIN verification error:', error);
+    return false;
+  }
+}
 
 export class POSController {
   /**
@@ -114,7 +158,7 @@ export class POSController {
       const sessionId = `pos_${Date.now()}_${uuidv4().substr(0, 8)}`;
       
       // Determine authentication methods based on amount and card settings
-      const authMethods = this.getRequiredAuthMethods(amount, card);
+      const authMethods = getRequiredAuthMethods(amount, card);
       
       // Create session data
       const sessionData = {
@@ -140,7 +184,7 @@ export class POSController {
       const displayData = {
         cardHolder: user.fullName || 'Card Holder',
         cardNumber: `**** **** **** ${card.cardNumber?.substr(-4) || '****'}`,
-        amount: this.formatAmount(amount),
+        amount: formatAmount(amount),
         merchantName: merchant.merchantName,
         terminalName: terminal.terminalName || `Terminal ${terminalId}`,
         authMethods: authMethods,
@@ -163,13 +207,27 @@ export class POSController {
     } catch (error) {
       const processingTime = Date.now() - startTime;
       logger.error(`❌ [${requestId}] POS session initiation error (${processingTime}ms):`, error);
-      
+      console.error('POS session error details:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        cardUuid: req.body.cardUuid,
+        merchantId: req.body.merchantId,
+        terminalId: req.body.terminalId,
+        amount: req.body.amount
+      });
+
       return res.status(500).json({
         success: false,
         error: 'POS session creation failed',
         code: ERROR_CODES.INTERNAL_ERROR,
         processingTime,
         requestId,
+        debug: process.env.NODE_ENV === 'development' ? {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          cardUuid: req.body.cardUuid,
+          merchantId: req.body.merchantId,
+          terminalId: req.body.terminalId
+        } : undefined
       });
     }
   }
@@ -245,7 +303,7 @@ export class POSController {
       // Perform authentication based on method
       switch (authMethod) {
         case 'PIN':
-          authResult = await this.verifyPIN(user, authData);
+          authResult = await verifyPIN(user, authData);
           break;
         case 'SIGNATURE':
           authResult = await this.verifySignature(user, authData);
@@ -366,47 +424,8 @@ export class POSController {
   }
   
   // Helper methods
-  private getRequiredAuthMethods(amount: number, card: any): string[] {
-    const methods = [];
-    
-    if (amount < 50000) { // < 50k VND
-      methods.push('TAP_ONLY');
-    } else if (amount < 500000) { // < 500k VND  
-      methods.push('PIN');
-    } else { // >= 500k VND
-      methods.push('PIN');
-      if (amount > 1000000) { // > 1M VND
-        methods.push('SIGNATURE');
-      }
-    }
-    
-    // Check card-specific requirements
-    if (card.requiresPIN) {
-      if (!methods.includes('PIN')) methods.push('PIN');
-    }
-    
-    return methods;
-  }
   
-  private formatAmount(amount: number): string {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
-    }).format(amount);
-  }
   
-  private async verifyPIN(user: any, pin: string): Promise<boolean> {
-    try {
-      if (!user.pin) {
-        return false;
-      }
-      
-      return await bcrypt.compare(pin, user.pin);
-    } catch (error) {
-      logger.error('PIN verification error:', error);
-      return false;
-    }
-  }
   
   private async verifySignature(_user: any, signatureData: any): Promise<boolean> {
     try {
@@ -567,11 +586,22 @@ export class POSController {
   async registerTerminal(req: Request, res: Response, _next: NextFunction): Promise<void | Response> {
     try {
       const { terminalId, terminalName, location, terminalType, features } = req.body;
-      const merchant = (req as any).merchant;
-      
+      const merchantAuth = (req as any).merchant;
+
+      // Get merchant document from database (not from auth middleware)
+      const merchant = await Merchant.findOne({ merchantId: merchantAuth.merchantId });
+
+      if (!merchant) {
+        return res.status(404).json({
+          success: false,
+          error: 'Merchant not found',
+          code: ERROR_CODES.NOT_FOUND,
+        });
+      }
+
       // Check if terminal already exists
       const existingTerminal = merchant.terminals?.find((t: any) => t.terminalId === terminalId);
-      
+
       if (existingTerminal) {
         return res.status(409).json({
           success: false,
@@ -579,7 +609,7 @@ export class POSController {
           code: ERROR_CODES.DUPLICATE_ENTRY,
         });
       }
-      
+
       // Create new terminal object
       const newTerminal = {
         terminalId,
@@ -595,16 +625,16 @@ export class POSController {
           timeout: 300, // 5 minutes
         },
         createdAt: new Date(),
-        lastUsed: null,
+        lastUsed: undefined,
       };
-      
+
       // Add terminal to merchant
       if (!merchant.terminals) {
         merchant.terminals = [];
       }
       merchant.terminals.push(newTerminal);
-      
-      // Save merchant (assuming Mongoose model)
+
+      // Save merchant
       await merchant.save();
       
       logger.info(`🖥️ New terminal registered: ${terminalId} for merchant ${merchant.merchantId}`);
@@ -617,11 +647,12 @@ export class POSController {
       
     } catch (error) {
       logger.error('Terminal registration error:', error);
-      
+
       return res.status(500).json({
         success: false,
-        error: 'Terminal registration service temporarily unavailable',
+        error: error instanceof Error ? error.message : 'Terminal registration service temporarily unavailable',
         code: ERROR_CODES.INTERNAL_ERROR,
+        stack: error instanceof Error ? error.stack : undefined
       });
     }
   }

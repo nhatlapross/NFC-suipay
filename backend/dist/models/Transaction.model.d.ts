@@ -1,15 +1,16 @@
-import mongoose, { Document } from 'mongoose';
+import mongoose, { Document } from "mongoose";
 export interface ITransaction extends Document {
     userId: mongoose.Types.ObjectId;
     cardId?: mongoose.Types.ObjectId;
     cardUuid?: string;
     txHash: string;
-    type: 'payment' | 'topup' | 'withdraw' | 'refund';
+    type: "payment" | "topup" | "withdraw" | "refund";
     amount: number;
     currency: string;
+    merchantUserId?: mongoose.Types.ObjectId;
     merchantId?: mongoose.Types.ObjectId;
     merchantName?: string;
-    status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+    status: "pending" | "processing" | "completed" | "failed" | "cancelled";
     gasFee: number;
     totalAmount: number;
     fromAddress: string;

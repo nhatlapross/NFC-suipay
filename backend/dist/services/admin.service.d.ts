@@ -37,6 +37,35 @@ export interface TransactionFilter {
     paymentMethod?: string;
 }
 export declare class AdminService {
+    getUsers(filters: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        role?: string;
+        kycStatus?: string;
+    }): Promise<{
+        users: {
+            id: import("mongoose").FlattenMaps<unknown>;
+            email: string;
+            fullName: string;
+            phoneNumber: string;
+            status: "active" | "blocked" | "suspended";
+            kycStatus: "pending" | "verified" | "rejected";
+            role: "user" | "merchant" | "admin";
+            dailyLimit: number;
+            monthlyLimit: number;
+            lastLogin: Date | undefined;
+            createdAt: Date;
+            transactionCount: number;
+            totalVolume: any;
+        }[];
+        pagination: {
+            total: number;
+            pages: number;
+            currentPage: number;
+            limit: number;
+        };
+    }>;
     getPaymentDashboard(): Promise<PaymentDashboardStats>;
     private getTransactionStats;
     private getFailureAnalysis;

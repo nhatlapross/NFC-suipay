@@ -1,6 +1,6 @@
-import { IMerchant } from '../models/Merchant.model';
-import { IWebhook } from '../models/Webhook.model';
-import { IApiKey } from '../models/ApiKey.model';
+import { IMerchant } from "../models/Merchant.model";
+import { IWebhook } from "../models/Webhook.model";
+import { IApiKey } from "../models/ApiKey.model";
 export interface MerchantRegistrationData {
     merchantName: string;
     businessType: string;
@@ -20,7 +20,7 @@ export interface MerchantRegistrationData {
     };
     walletAddress: string;
     webhookUrl?: string;
-    settlementPeriod?: 'daily' | 'weekly' | 'monthly';
+    settlementPeriod?: "daily" | "weekly" | "monthly";
 }
 export interface MerchantApiKeys {
     publicKey: string;
@@ -32,7 +32,7 @@ export declare class MerchantService {
     private generateApiKeys;
     private validateWalletAddress;
     private calculateNextSettlementDate;
-    registerMerchant(data: MerchantRegistrationData): Promise<{
+    registerMerchant(data: MerchantRegistrationData, userId: string): Promise<{
         merchant: IMerchant;
         apiKeys: MerchantApiKeys;
     }>;

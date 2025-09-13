@@ -1,14 +1,15 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from "express";
+import { AuthRequest } from "../middleware/auth.middleware";
 export declare class CardController {
-    createCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
-    getUserCards(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    createCard(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response>;
+    getUserCards(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response>;
     getCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     updateCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     deleteCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     activateCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     deactivateCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
-    blockCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
-    unblockCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    blockCard(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response>;
+    unblockCard(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response>;
     setPrimaryCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     updateCardLimits(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     resetCardLimits(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;

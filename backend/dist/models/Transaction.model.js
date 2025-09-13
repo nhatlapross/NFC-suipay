@@ -38,13 +38,13 @@ const mongoose_1 = __importStar(require("mongoose"));
 const transactionSchema = new mongoose_1.Schema({
     userId: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: "User",
         required: true,
         index: true,
     },
     cardId: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: 'Card',
+        ref: "Card",
         index: true,
     },
     cardUuid: String,
@@ -56,7 +56,7 @@ const transactionSchema = new mongoose_1.Schema({
     },
     type: {
         type: String,
-        enum: ['payment', 'topup', 'withdraw', 'refund'],
+        enum: ["payment", "topup", "withdraw", "refund"],
         required: true,
     },
     amount: {
@@ -66,18 +66,18 @@ const transactionSchema = new mongoose_1.Schema({
     },
     currency: {
         type: String,
-        default: 'SUI',
+        default: "SUI",
     },
     merchantId: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: 'Merchant',
+        ref: "Merchant",
         index: true,
     },
     merchantName: String,
     status: {
         type: String,
-        enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
-        default: 'pending',
+        enum: ["pending", "processing", "completed", "failed", "cancelled"],
+        default: "pending",
         index: true,
     },
     gasFee: {
@@ -112,7 +112,7 @@ const transactionSchema = new mongoose_1.Schema({
     refundReason: String,
     originalTransactionId: {
         type: mongoose_1.Schema.Types.ObjectId,
-        ref: 'Transaction'
+        ref: "Transaction",
     },
     completedAt: Date,
 }, {
@@ -123,15 +123,15 @@ transactionSchema.index({ userId: 1, status: 1, createdAt: -1 });
 transactionSchema.index({ merchantId: 1, status: 1, createdAt: -1 });
 transactionSchema.index({ createdAt: -1 });
 // Virtual for transaction age
-transactionSchema.virtual('age').get(function () {
+transactionSchema.virtual("age").get(function () {
     return Date.now() - this.createdAt.getTime();
 });
 // Pre-save hook to calculate total amount
-transactionSchema.pre('save', function (next) {
-    if (this.isModified('amount') || this.isModified('gasFee')) {
+transactionSchema.pre("save", function (next) {
+    if (this.isModified("amount") || this.isModified("gasFee")) {
         this.totalAmount = this.amount + this.gasFee;
     }
     next();
 });
-exports.Transaction = mongoose_1.default.model('Transaction', transactionSchema);
+exports.Transaction = mongoose_1.default.model("Transaction", transactionSchema);
 //# sourceMappingURL=Transaction.model.js.map

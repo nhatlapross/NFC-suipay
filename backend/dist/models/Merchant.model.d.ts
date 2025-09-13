@@ -1,5 +1,6 @@
-import mongoose, { Document } from 'mongoose';
+import mongoose, { Document } from "mongoose";
 export interface IMerchant extends Document {
+    userId: mongoose.Types.ObjectId;
     merchantId: string;
     merchantName: string;
     businessType: string;
@@ -27,11 +28,29 @@ export interface IMerchant extends Document {
     isActive: boolean;
     isVerified: boolean;
     commission: number;
-    settlementPeriod: 'daily' | 'weekly' | 'monthly';
+    settlementPeriod: "daily" | "weekly" | "monthly";
     nextSettlementDate: Date;
     totalTransactions: number;
     totalVolume: number;
     metadata?: Record<string, any>;
+    terminals?: Array<{
+        terminalId: string;
+        terminalName: string;
+        location: string;
+        terminalType: "MOBILE" | "FIXED" | "KIOSK" | "ONLINE";
+        features: string[];
+        isActive: boolean;
+        settings: {
+            maxAmount: number;
+            requireSignature: boolean;
+            requirePINAmount: number;
+            timeout: number;
+        };
+        createdAt: Date;
+        lastUsed?: Date;
+        updatedAt?: Date;
+        deactivatedAt?: Date;
+    }>;
     createdAt: Date;
     updatedAt: Date;
 }
