@@ -654,7 +654,27 @@ export class PaymentController {
     ): Promise<void | Response> {
         try {
             const { cardUuid, amount, merchantId, terminalId } = req.body;
-            const user = (req as any).user;
+            // const user = (req as any).user;
+            const card = await Card.findOne({
+                uuid: cardUuid,
+                status: "active",
+            });
+            if (!card) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid or inactive card",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
+
+            const user = await User.findById(card.userId);
+            if (!user) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User not found for this card",
+                    code: ERROR_CODES.VALIDATION_ERROR,
+                });
+            }
 
             // Input validation
             if (!cardUuid || !amount || !merchantId || !terminalId) {
