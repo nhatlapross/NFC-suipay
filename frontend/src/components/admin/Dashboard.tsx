@@ -90,6 +90,16 @@ const Dashboard: React.FC = () => {
                 
                 if (dashboardResponse?.success && dashboardResponse?.data) {
                     setDashboardStats(dashboardResponse.data);
+                } else {
+                    // Fallback data when API fails
+                    setDashboardStats({
+                        totalTransactions: { today: 0, week: 0, month: 0 },
+                        totalVolume: { today: 0, week: 0, month: 0 },
+                        successRate: { today: 0, week: 0, month: 0 },
+                        activeCards: 0,
+                        activeMerchants: 0,
+                        averageTransactionTime: 0
+                    });
                 }
 
                 // Load card stats
@@ -98,6 +108,13 @@ const Dashboard: React.FC = () => {
                 
                 if (cardResponse?.success && cardResponse?.data?.cardStats) {
                     setCardStats(cardResponse.data.cardStats);
+                } else {
+                    // Fallback data when API fails
+                    setCardStats({
+                        active: 0,
+                        blocked: 0,
+                        inactive: 0
+                    });
                 }
 
                 // Load recent transactions
@@ -164,7 +181,7 @@ const Dashboard: React.FC = () => {
                     const formattedTransactions = transactions.map((tx: any) => ({
                         id: tx._id || tx.id,
                         amount: tx.amount || 0,
-                        type: tx.type === 'topup' ? 'INFLOW' : 'OUTFLOW',
+                        type: (tx.type === 'topup' ? 'INFLOW' : 'OUTFLOW') as 'INFLOW' | 'OUTFLOW',
                         status: tx.status?.toUpperCase() || 'PENDING',
                         time: new Date(tx.createdAt).toLocaleTimeString('en-US', { 
                             hour: '2-digit', 
@@ -177,12 +194,39 @@ const Dashboard: React.FC = () => {
                         } : undefined
                     }));
                     setRecentTransactions(formattedTransactions);
+                } else {
+                    // Fallback data when no transactions
+                    setFlowStats({
+                        inflow: { today: 0, week: 0, month: 0 },
+                        outflow: { today: 0, week: 0, month: 0 }
+                    });
+                    setRecentTransactions([]);
                 }
 
                 console.log('✅ [Dashboard] Dashboard data loaded successfully');
             } catch (err: any) {
                 console.error('💥 [Dashboard] Error loading dashboard data:', err);
                 setError(err?.response?.data?.error || "Failed to load dashboard data");
+                
+                // Set fallback data on error
+                setDashboardStats({
+                    totalTransactions: { today: 0, week: 0, month: 0 },
+                    totalVolume: { today: 0, week: 0, month: 0 },
+                    successRate: { today: 0, week: 0, month: 0 },
+                    activeCards: 0,
+                    activeMerchants: 0,
+                    averageTransactionTime: 0
+                });
+                setCardStats({
+                    active: 0,
+                    blocked: 0,
+                    inactive: 0
+                });
+                setFlowStats({
+                    inflow: { today: 0, week: 0, month: 0 },
+                    outflow: { today: 0, week: 0, month: 0 }
+                });
+                setRecentTransactions([]);
             } finally {
                 setLoading(false);
             }
@@ -398,7 +442,13 @@ const Dashboard: React.FC = () => {
                     </div>
                 )}
                 <div className="space-y-3 overflow-x-auto">
-                    {recentTransactions.map((tx) => (
+                    {recentTransactions.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <div className="text-lg font-semibold mb-2">No transactions found</div>
+                            <div className="text-sm">Transactions will appear here when available</div>
+                        </div>
+                    ) : (
+                        recentTransactions.map((tx) => (
                         <div
                             key={tx.id}
                             className="flex flex-col lg:flex-row lg:items-center lg:justify-between p-3 lg:p-4 border-2 border-black bg-white hover:bg-gray-100 gap-3 lg:gap-0"
@@ -462,7 +512,8 @@ const Dashboard: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                    ))}
+                        ))
+                    )}
                 </div>
             </div>
         </div>
