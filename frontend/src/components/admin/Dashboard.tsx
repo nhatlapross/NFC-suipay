@@ -33,6 +33,19 @@ interface DashboardStats {
     averageTransactionTime: number;
 }
 
+interface FlowStats {
+    inflow: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    outflow: {
+        today: number;
+        week: number;
+        month: number;
+    };
+}
+
 interface CardStats {
     active: number;
     blocked: number;
@@ -59,6 +72,7 @@ interface Transaction {
 const Dashboard: React.FC = () => {
     const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
     const [cardStats, setCardStats] = useState<CardStats | null>(null);
+    const [flowStats, setFlowStats] = useState<FlowStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
@@ -95,10 +109,62 @@ const Dashboard: React.FC = () => {
                 console.log(' [Dashboard] Transactions:', transactionsResponse);
                 
                 if (transactionsResponse?.success && transactionsResponse?.data?.transactions) {
-                    const formattedTransactions = transactionsResponse.data.transactions.map((tx: any) => ({
+                    const transactions = transactionsResponse.data.transactions;
+                    console.log('📊 [Dashboard] Raw transactions data:', transactions.slice(0, 3)); // Log first 3 transactions
+                    
+                    // Calculate flow stats from transactions
+                    const now = new Date();
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+                    const calculateFlowStats = (transactions: any[], startDate: Date) => {
+                        const filteredTxs = transactions.filter(tx => {
+                            const txDate = new Date(tx.createdAt);
+                            return txDate >= startDate && tx.status === 'completed';
+                        });
+                        
+                        const inflow = filteredTxs
+                            .filter(tx => tx.type === 'topup')
+                            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        
+                        const outflow = filteredTxs
+                            .filter(tx => ['payment', 'withdraw'].includes(tx.type))
+                            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        
+                        console.log('📊 [Dashboard] Flow calculation:', {
+                            startDate: startDate.toISOString(),
+                            totalTxs: filteredTxs.length,
+                            inflowTxs: filteredTxs.filter(tx => tx.type === 'topup').length,
+                            outflowTxs: filteredTxs.filter(tx => ['payment', 'withdraw'].includes(tx.type)).length,
+                            inflow,
+                            outflow
+                        });
+                        
+                        return { inflow, outflow };
+                    };
+
+                    const todayStats = calculateFlowStats(transactions, today);
+                    const weekStats = calculateFlowStats(transactions, weekAgo);
+                    const monthStats = calculateFlowStats(transactions, monthAgo);
+
+                    setFlowStats({
+                        inflow: {
+                            today: todayStats.inflow,
+                            week: weekStats.inflow,
+                            month: monthStats.inflow
+                        },
+                        outflow: {
+                            today: todayStats.outflow,
+                            week: weekStats.outflow,
+                            month: monthStats.outflow
+                        }
+                    });
+
+                    const formattedTransactions = transactions.map((tx: any) => ({
                         id: tx._id || tx.id,
                         amount: tx.amount || 0,
-                        type: tx.type === 'payment' ? 'INFLOW' : 'OUTFLOW',
+                        type: tx.type === 'topup' ? 'INFLOW' : 'OUTFLOW',
                         status: tx.status?.toUpperCase() || 'PENDING',
                         time: new Date(tx.createdAt).toLocaleTimeString('en-US', { 
                             hour: '2-digit', 
@@ -267,13 +333,13 @@ const Dashboard: React.FC = () => {
                                 </span>
                             </div>
                             <span className="text-2xl font-bold text-black">
-                                $847,230
+                                {formatAmount(flowStats?.inflow?.today)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
                             <span className="font-bold text-black">WEEKLY</span>
                             <span className="text-xl font-bold text-black">
-                                $5.2M
+                                {formatAmount(flowStats?.inflow?.week)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
@@ -281,7 +347,7 @@ const Dashboard: React.FC = () => {
                                 MONTHLY
                             </span>
                             <span className="text-xl font-bold text-black">
-                                $18.7M
+                                {formatAmount(flowStats?.inflow?.month)}
                             </span>
                         </div>
                     </div>
@@ -300,13 +366,13 @@ const Dashboard: React.FC = () => {
                                 </span>
                             </div>
                             <span className="text-2xl font-bold text-white">
-                                $623,180
+                                {formatAmount(flowStats?.outflow?.today)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
                             <span className="font-bold text-black">WEEKLY</span>
                             <span className="text-xl font-bold text-black">
-                                $3.8M
+                                {formatAmount(flowStats?.outflow?.week)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
@@ -314,7 +380,7 @@ const Dashboard: React.FC = () => {
                                 MONTHLY
                             </span>
                             <span className="text-xl font-bold text-black">
-                                $14.2M
+                                {formatAmount(flowStats?.outflow?.month)}
                             </span>
                         </div>
                     </div>
