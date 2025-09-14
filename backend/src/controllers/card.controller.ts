@@ -403,16 +403,95 @@ export class CardController {
     }
 
     async getAllCards(
-        _req: Request,
+        req: Request,
         res: Response,
         next: NextFunction
     ): Promise<void | Response> {
         try {
+            const { page = 1, limit = 20, status, type, userId } = req.query as {
+                page?: string;
+                limit?: string;
+                status?: string;
+                type?: string;
+                userId?: string;
+            };
+
+            const pageNum = parseInt(page as string) || 1;
+            const limitNum = parseInt(limit as string) || 20;
+            const skip = (pageNum - 1) * limitNum;
+
+            // Build query
+            const query: any = {};
+            if (status) {
+                if (status === 'active') {
+                    query.isActive = true;
+                    query.blockedAt = { $exists: false };
+                } else if (status === 'blocked') {
+                    query.blockedAt = { $exists: true };
+                } else if (status === 'inactive') {
+                    query.isActive = false;
+                    query.blockedAt = { $exists: false };
+                }
+            }
+            if (type) {
+                query.cardType = type;
+            }
+            if (userId) {
+                query.userId = userId;
+            }
+
+            // Get cards with user info
+            const cards = await Card.find(query)
+                .populate('userId', 'fullName email phoneNumber')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limitNum)
+                .lean();
+
+            const total = await Card.countDocuments(query);
+
+            // Format response
+            const formattedCards = cards.map(card => ({
+                id: card._id,
+                cardUuid: card.cardUuid,
+                cardType: card.cardType,
+                isActive: card.isActive,
+                isPrimary: card.isPrimary,
+                dailyLimit: card.dailyLimit,
+                monthlyLimit: card.monthlyLimit,
+                dailySpent: card.dailySpent,
+                monthlySpent: card.monthlySpent,
+                singleTransactionLimit: card.singleTransactionLimit,
+                issueDate: card.issueDate,
+                expiryDate: card.expiryDate,
+                usageCount: card.usageCount,
+                lastUsed: card.lastUsed,
+                blockedAt: card.blockedAt,
+                blockedReason: card.blockedReason,
+                createdAt: card.createdAt,
+                updatedAt: card.updatedAt,
+                user: card.userId ? {
+                    id: card.userId._id,
+                    fullName: (card.userId as any).fullName,
+                    email: (card.userId as any).email,
+                    phoneNumber: (card.userId as any).phoneNumber
+                } : null
+            }));
+
             res.json({
                 success: true,
-                message: "Card controller method not implemented yet",
+                data: {
+                    cards: formattedCards,
+                    pagination: {
+                        current: pageNum,
+                        total: Math.ceil(total / limitNum),
+                        count: total,
+                        limit: limitNum
+                    }
+                }
             });
         } catch (error) {
+            logger.error("Error getting all cards:", error);
             next(error);
         }
     }
