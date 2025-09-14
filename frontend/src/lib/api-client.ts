@@ -254,11 +254,10 @@ export async function getAdminTransactionsAPI(params?: {
   page?: number;
   limit?: number;
   status?: string;
-  merchantId?: string;
-  userId?: string;
-  cardId?: string;
   startDate?: string;
   endDate?: string;
 }) {
+  console.log('🌐 [API Client] Calling getAdminTransactionsAPI');
+  console.log('🌐 [API Client] Params:', params);
   return api.get('/admin/transactions', { params });
 }
