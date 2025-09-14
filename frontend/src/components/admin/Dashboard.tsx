@@ -217,7 +217,7 @@ const Dashboard: React.FC = () => {
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 w-full">
             <div className="border-4 border-black bg-[#00F0FF] p-6 shadow-[8px_8px_0_black]">
                 <h1 className="text-3xl font-bold text-black mb-2">
                     DASHBOARD OVERVIEW
@@ -228,7 +228,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {stats.map((stat, index) => {
                     const Icon = stat.icon;
                     return (
@@ -253,7 +253,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Flow Summary */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
                 <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
                     <h2 className="text-xl font-bold mb-4 text-black">
                         INFLOW SUMMARY
@@ -322,7 +322,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Recent Transactions */}
-            <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
+            <div className="bg-white border-4 border-black p-4 lg:p-6 shadow-[6px_6px_0_black]">
                 <h2 className="text-xl font-bold mb-6 text-black">
                     RECENT TRANSACTIONS
                 </h2>
@@ -331,18 +331,18 @@ const Dashboard: React.FC = () => {
                         {error}
                     </div>
                 )}
-                <div className="space-y-3">
+                <div className="space-y-3 overflow-x-auto">
                     {recentTransactions.map((tx) => (
                         <div
                             key={tx.id}
-                            className="flex items-center justify-between p-4 border-2 border-black bg-white hover:bg-gray-100"
+                            className="flex flex-col lg:flex-row lg:items-center lg:justify-between p-3 lg:p-4 border-2 border-black bg-white hover:bg-gray-100 gap-3 lg:gap-0"
                         >
-                            <div className="flex items-center gap-4">
-                                <div className="font-bold text-black">
+                            <div className="flex flex-wrap items-center gap-2 lg:gap-4">
+                                <div className="font-bold text-black text-sm">
                                     {tx.id}
                                 </div>
                                 <div
-                                    className={`px-3 py-1 border-2 border-black font-bold text-xs ${
+                                    className={`px-2 py-1 border-2 border-black font-bold text-xs ${
                                         tx.type === "INFLOW"
                                             ? "bg-[#00F0FF] text-black"
                                             : "bg-[#FF005C] text-white"
@@ -361,36 +361,38 @@ const Dashboard: React.FC = () => {
                                     </div>
                                 )}
                             </div>
-                            <div className="font-bold text-black">
-                                {formatAmount(tx.amount)}
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div
-                                    className={`px-3 py-1 border-2 border-black font-bold text-xs ${
-                                        tx.status === "COMPLETED"
-                                            ? "bg-black text-white"
-                                            : tx.status === "PENDING"
-                                            ? "bg-yellow-400 text-black"
-                                            : "bg-red-500 text-white"
-                                    }`}
-                                >
-                                    {tx.status}
+                            <div className="flex items-center justify-between lg:justify-end gap-4">
+                                <div className="font-bold text-black text-sm lg:text-base">
+                                    {formatAmount(tx.amount)}
                                 </div>
-                                {tx.txHash && (
-                                    <a
-                                        href={`https://suiscan.xyz/testnet/tx/${tx.txHash}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                <div className="flex items-center gap-2 lg:gap-4">
+                                    <div
+                                        className={`px-3 py-1 border-2 border-black font-bold text-xs ${
+                                            tx.status === "COMPLETED"
+                                                ? "bg-black text-white"
+                                                : tx.status === "PENDING"
+                                                ? "bg-yellow-400 text-black"
+                                                : "bg-red-500 text-white"
+                                        }`}
                                     >
-                                        <ExternalLink className="w-3 h-3" />
-                                        <span className="font-mono">
-                                            {tx.txHash.substring(0, 8)}...
-                                        </span>
-                                    </a>
-                                )}
-                                <div className="text-sm font-bold text-gray-600">
-                                    {tx.time}
+                                        {tx.status}
+                                    </div>
+                                    {tx.txHash && (
+                                        <a
+                                            href={`https://suiscan.xyz/testnet/tx/${tx.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                        >
+                                            <ExternalLink className="w-3 h-3" />
+                                            <span className="font-mono">
+                                                {tx.txHash.substring(0, 8)}...
+                                            </span>
+                                        </a>
+                                    )}
+                                    <div className="text-sm font-bold text-gray-600">
+                                        {tx.time}
+                                    </div>
                                 </div>
                             </div>
                         </div>

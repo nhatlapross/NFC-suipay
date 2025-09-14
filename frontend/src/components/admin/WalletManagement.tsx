@@ -193,12 +193,12 @@ const WalletManagement: React.FC = () => {
     }
 
     return (
-        <div className="space-y-8">
-            <div className="border-4 border-black bg-[#FF005C] p-6 shadow-[8px_8px_0_black]">
-                <h1 className="text-3xl font-bold text-white mb-2">
+        <div className="space-y-8 w-full">
+            <div className="border-4 border-black bg-[#FF005C] p-4 lg:p-6 shadow-[8px_8px_0_black]">
+                <h1 className="text-2xl lg:text-3xl font-bold text-white mb-2">
                     WALLET MANAGEMENT
                 </h1>
-                <p className="text-white font-medium">
+                <p className="text-white font-medium text-sm lg:text-base">
                     CARD CONTROL & MONITORING
                 </p>
                 {error && (
@@ -209,7 +209,7 @@ const WalletManagement: React.FC = () => {
             </div>
 
             {/* Summary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 text-right">
                 <div className="bg-[#00F0FF] p-6 border-4 border-black shadow-[6px_6px_0_black]">
                     <div className="text-2xl font-bold text-black">{activeCards}</div>
                     <div className="font-bold text-sm text-black">
@@ -257,15 +257,15 @@ const WalletManagement: React.FC = () => {
                             return (
                                 <div
                                     key={card.id}
-                                    className="flex items-center justify-between p-6 border-2 border-black bg-white"
+                                    className="flex flex-col lg:flex-row lg:items-center lg:justify-between p-4 lg:p-6 border-2 border-black bg-white gap-4 lg:gap-0"
                                 >
-                                    <div className="flex items-center gap-6">
-                                        <CreditCard className="w-8 h-8 text-black" />
-                                        <div>
-                                            <div className="font-bold text-black text-lg">
+                                    <div className="flex items-center gap-4 lg:gap-6">
+                                        <CreditCard className="w-6 h-6 lg:w-8 lg:h-8 text-black flex-shrink-0" />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-bold text-black text-sm lg:text-lg truncate">
                                                 {card.cardUuid}
                                             </div>
-                                            <div className="text-sm text-gray-600 font-medium">
+                                            <div className="text-xs lg:text-sm text-gray-600 font-medium">
                                                 {card.cardType.toUpperCase()} • {card.usageCount} uses
                                             </div>
                                             {card.user && (
@@ -334,7 +334,7 @@ const WalletManagement: React.FC = () => {
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
                 <button className="p-6 bg-[#00F0FF] border-4 border-black shadow-[6px_6px_0_black] hover:shadow-[8px_8px_0_black] transition-all">
                     <div className="text-xl font-bold text-black">
                         BULK LOCK

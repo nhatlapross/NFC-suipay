@@ -141,9 +141,9 @@ const FraudMonitoring: React.FC = () => {
     ];
 
     return (
-        <div className="space-y-8">
-            <div className="border-4 border-black bg-[#FF005C] p-6 shadow-[8px_8px_0_black]">
-                <h1 className="text-3xl font-bold text-white mb-2">
+        <div className="space-y-8 w-full">
+            <div className="border-4 border-black bg-[#FF005C] p-4 lg:p-6 shadow-[8px_8px_0_black]">
+                <h1 className="text-2xl lg:text-3xl font-bold text-white mb-2">
                     FRAUD MONITORING
                 </h1>
                 <p className="text-white font-medium">
@@ -152,7 +152,7 @@ const FraudMonitoring: React.FC = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {fraudStats.map((stat, index) => {
                     const Icon = stat.icon;
                     return (
@@ -177,7 +177,7 @@ const FraudMonitoring: React.FC = () => {
             </div>
 
             {/* Alert Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <button className="p-4 bg-[#FF005C] text-white border-4 border-black font-bold hover:shadow-[6px_6px_0_black] transition-all">
                     <AlertTriangle className="w-6 h-6 mx-auto mb-2" />
                     <div>BLOCK ALL</div>
@@ -295,7 +295,7 @@ const FraudMonitoring: React.FC = () => {
             </div>
 
             {/* Fraud Detection Settings */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
                 <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
                     <h2 className="text-xl font-bold mb-6 text-black">
                         DETECTION RULES

@@ -10,6 +10,7 @@ type ActivePage = "dashboard" | "wallet" | "contracts" | "fraud";
 
 export default function Page() {
     const [activePage, setActivePage] = useState<ActivePage>("dashboard");
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     const renderActivePage = () => {
         switch (activePage) {
@@ -28,8 +29,14 @@ export default function Page() {
 
     return (
         <div className="min-h-screen bg-white font-mono flex">
-            <Sidebar activePage={activePage} setActivePage={setActivePage} />
-            <main className="flex-1 p-6">{renderActivePage()}</main>
+            <Sidebar 
+                activePage={activePage} 
+                setActivePage={setActivePage} 
+                onCollapseChange={setIsSidebarCollapsed}
+            />
+            <main className={`flex-1 p-4 lg:p-6 transition-all duration-300 ease-in-out`}>
+                {renderActivePage()}
+            </main>
         </div>
     );
 }
