@@ -105,4 +105,9 @@ router.get(
     paymentController.getMerchantPaymentRequest.bind(paymentController)
 );
 
+// MY_COIN Test APIs
+router.get("/mycoin/balance", paymentController.getMyCoinBalance.bind(paymentController));
+router.get("/mycoin/objects", paymentController.getMyCoinObjects.bind(paymentController));
+router.post("/mycoin/test-payment", paymentController.testMyCoinPayment.bind(paymentController));
+
 export default router;

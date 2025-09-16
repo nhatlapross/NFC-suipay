@@ -31,5 +31,9 @@ router.get("/stats", payment_controller_1.paymentController.getPaymentStats);
 // Merchant QR request
 router.post("/merchant/create-request", rateLimit_middleware_1.paymentLimiter, (0, validation_middleware_1.validate)(payment_validator_1.paymentValidators.createMerchantRequest), payment_controller_1.paymentController.createMerchantPaymentRequest.bind(payment_controller_1.paymentController));
 router.get("/merchant/request/:id", payment_controller_1.paymentController.getMerchantPaymentRequest.bind(payment_controller_1.paymentController));
+// MY_COIN Test APIs
+router.get("/mycoin/balance", payment_controller_1.paymentController.getMyCoinBalance.bind(payment_controller_1.paymentController));
+router.get("/mycoin/objects", payment_controller_1.paymentController.getMyCoinObjects.bind(payment_controller_1.paymentController));
+router.post("/mycoin/test-payment", payment_controller_1.paymentController.testMyCoinPayment.bind(payment_controller_1.paymentController));
 exports.default = router;
 //# sourceMappingURL=payment.routes.js.map

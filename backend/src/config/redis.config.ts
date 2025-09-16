@@ -2,7 +2,7 @@
 import { createClient } from 'redis';
 import logger from '../utils/logger';
 
-// Redis Cloud Configuration
+// Redis Cloud Configuration with connection pool
 const redisClient = createClient({
   username: process.env.REDIS_CLOUD_USERNAME || 'default',
   password: process.env.REDIS_CLOUD_PASSWORD,
@@ -10,9 +10,14 @@ const redisClient = createClient({
     host: process.env.REDIS_CLOUD_HOST,
     port: parseInt(process.env.REDIS_CLOUD_PORT || '6379'),
     connectTimeout: parseInt(process.env.REDIS_CONNECT_TIMEOUT || '10000'),
+    keepAlive: true, // Enable keep-alive
     reconnectStrategy: (retries: number) => {
-      const delay = Math.min(retries * 50, 1000);
-      console.log(`Redis reconnect attempt ${retries}, delay: ${delay}ms`);
+      if (retries > 10) {
+        logger.error(`Redis max reconnection attempts reached: ${retries}`);
+        return false; // Stop reconnecting after 10 attempts
+      }
+      const delay = Math.min(retries * 100, 3000); // Max 3 seconds delay
+      logger.warn(`Redis reconnect attempt ${retries}, delay: ${delay}ms`);
       return delay;
     }
   }
@@ -208,6 +213,93 @@ async function measureLatency(): Promise<number> {
   await redisClient.ping();
   return Date.now() - start;
 }
+
+// Graceful shutdown function
+export const closeRedisConnection = async (): Promise<void> => {
+  try {
+    if (redisClient.isOpen) {
+      logger.info('🔄 Closing Redis connection...');
+      await redisClient.quit();
+      logger.info('✅ Redis connection closed gracefully');
+    }
+  } catch (error) {
+    logger.error('❌ Error closing Redis connection:', error);
+    try {
+      await redisClient.disconnect();
+    } catch (disconnectError) {
+      logger.error('❌ Error disconnecting Redis:', disconnectError);
+    }
+  }
+};
+
+// Connection health check with automatic recovery
+export const ensureRedisConnection = async (): Promise<boolean> => {
+  try {
+    if (!redisClient.isReady) {
+      logger.info('🔄 Redis not ready, attempting to connect...');
+      await redisClient.connect();
+    }
+
+    // Ping test
+    await redisClient.ping();
+    return true;
+  } catch (error) {
+    logger.error('❌ Redis connection health check failed:', error);
+    return false;
+  }
+};
+
+// Monitoring function
+export const getConnectionInfo = () => {
+  return {
+    isOpen: redisClient.isOpen,
+    isReady: redisClient.isReady,
+    serverInfo: {
+      host: process.env.REDIS_CLOUD_HOST,
+      port: process.env.REDIS_CLOUD_PORT,
+    }
+  };
+};
+
+// Enhanced cache functions with connection checks
+export const getCachedSafe = async (key: string): Promise<any> => {
+  try {
+    // Ensure connection is healthy
+    const isHealthy = await ensureRedisConnection();
+    if (!isHealthy) {
+      logger.warn(`Redis unhealthy, skipping cache get for key: ${key}`);
+      return null;
+    }
+
+    const data = await redisClient.get(key);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    logger.error(`Redis GET error for key ${key}:`, error);
+    return null; // Fallback gracefully
+  }
+};
+
+export const setCachedSafe = async (
+  key: string,
+  data: any,
+  ttl: number = 300
+): Promise<boolean> => {
+  try {
+    // Ensure connection is healthy
+    const isHealthy = await ensureRedisConnection();
+    if (!isHealthy) {
+      logger.warn(`Redis unhealthy, skipping cache set for key: ${key}`);
+      return false;
+    }
+
+    const serialized = JSON.stringify(data);
+    await redisClient.setEx(key, ttl, serialized);
+    return true;
+  } catch (error) {
+    logger.error(`Redis SET error for key ${key}:`, error);
+    return false;
+  }
+};
 
 // Export client and initialization
 export { redisClient };

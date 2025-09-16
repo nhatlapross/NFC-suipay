@@ -5,6 +5,8 @@ export declare class PaymentService {
     private validateCard;
     private checkTransactionLimits;
     private executeBlockchainTransaction;
+    private getUserMyCoinObjects;
+    getMyCoinBalance(address: string): Promise<number>;
     private updateCardUsage;
     private updateMerchantStats;
     private sendWebhook;

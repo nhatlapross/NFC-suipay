@@ -69,7 +69,7 @@ const transactionSchema = new Schema<ITransaction>(
         },
         currency: {
             type: String,
-            default: "SUI",
+            default: "MY_COIN",
         },
         merchantId: {
             type: Schema.Types.ObjectId,

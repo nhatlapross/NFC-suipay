@@ -4,7 +4,7 @@ import { Transaction } from '@mysten/sui/transactions';
 import { getSuiClient } from '../config/sui.config';
 import { User } from '../models/User.model';
 import { Transaction as TransactionModel } from '../models/Transaction.model';
-import { encryptPrivateKey, decryptPrivateKey } from '../services/encryption.service';
+import { decryptPrivateKey } from '../services/encryption.service';
 import { getCached, setCached } from '../config/redis.config';
 import { CONSTANTS, ERROR_CODES } from '../config/constants';
 import logger from '../utils/logger';
@@ -26,18 +26,16 @@ export class WalletController {
       }
       
       // Generate new keypair
-      const keypair = Ed25519Keypair.generate();
+      const keypair = new Ed25519Keypair();
       const publicKey = keypair.getPublicKey();
       const walletAddress = publicKey.toSuiAddress();
-      
-      // Encrypt and store private key
-      const encryptedPrivateKey = encryptPrivateKey(
-        Buffer.from(keypair.getSecretKey()).toString('base64')
-      );
+
+      // Store private key in bech32 format (no encryption needed for bech32)
+      const privateKey = keypair.getSecretKey(); // Already in bech32 format
       
       // Update user with wallet info
       user!.walletAddress = walletAddress;
-      user!.encryptedPrivateKey = encryptedPrivateKey;
+      user!.encryptedPrivateKey = privateKey; // Store bech32 format directly
       await user!.save();
       
       res.json({
@@ -180,15 +178,21 @@ export class WalletController {
         });
       }
       
-      // Handle private key - could be encrypted base64 or bech32
+      // Handle private key - could be encrypted or bech32 format
       let keypair: Ed25519Keypair;
       if (user.encryptedPrivateKey.startsWith('suiprivkey1')) {
         // It's a bech32 format, use directly
         keypair = Ed25519Keypair.fromSecretKey(user.encryptedPrivateKey);
       } else {
-        // It's encrypted base64, decrypt first
+        // It's encrypted, decrypt first
         const privateKey = decryptPrivateKey(user.encryptedPrivateKey);
-        keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+        // Check if decrypted key is bech32 or raw bytes
+        if (privateKey.startsWith('suiprivkey1')) {
+          keypair = Ed25519Keypair.fromSecretKey(privateKey);
+        } else {
+          // Assume it's base64 encoded bytes
+          keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+        }
       }
       
       // Build transfer transaction
@@ -323,7 +327,10 @@ export class WalletController {
         let keypair: Ed25519Keypair;
         
         // Try to parse private key (support different formats)
-        if (privateKey.startsWith('0x')) {
+        if (privateKey.startsWith('suiprivkey1')) {
+          // Sui bech32 format - use directly
+          keypair = Ed25519Keypair.fromSecretKey(privateKey);
+        } else if (privateKey.startsWith('0x')) {
           // Hex format
           const keyBytes = Buffer.from(privateKey.slice(2), 'hex');
           keypair = Ed25519Keypair.fromSecretKey(keyBytes);
@@ -332,18 +339,16 @@ export class WalletController {
           const keyBytes = Buffer.from(privateKey, 'base64');
           keypair = Ed25519Keypair.fromSecretKey(keyBytes);
         }
-        
+
         const publicKey = keypair.getPublicKey();
         const walletAddress = publicKey.toSuiAddress();
-        
-        // Encrypt and store private key
-        const encryptedPrivateKey = encryptPrivateKey(
-          Buffer.from(keypair.getSecretKey()).toString('base64')
-        );
+
+        // Store private key in bech32 format (recommended)
+        const storedPrivateKey = keypair.getSecretKey(); // bech32 format
         
         // Update user with wallet info
         user.walletAddress = walletAddress;
-        user.encryptedPrivateKey = encryptedPrivateKey;
+        user.encryptedPrivateKey = storedPrivateKey; // Store bech32 format
         await user.save();
         
         // Get wallet balance for response

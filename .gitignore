@@ -45,7 +45,7 @@ next-env.d.ts
 /backend/.env
 /backend/package-lock.json
 /backend/logs
-
+/backend/dist
 # Logs
 logs
 *.log

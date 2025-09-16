@@ -22,6 +22,9 @@ export declare class PaymentController {
     getPaymentMethods(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getTransactionReceipt(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     validateTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    getMyCoinBalance(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    getMyCoinObjects(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    testMyCoinPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
 }
 export declare const paymentController: PaymentController;
 //# sourceMappingURL=payment.controller.d.ts.map

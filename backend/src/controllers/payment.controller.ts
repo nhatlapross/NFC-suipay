@@ -885,7 +885,7 @@ export class PaymentController {
                 txHash: "pending_" + transactionId,
                 type: "payment",
                 amount,
-                currency: "SUI",
+                currency: "MY_COIN",
                 status: "processing",
                 merchantId: (merchant as any)._id,
                 merchantName: merchant.merchantName,
@@ -2029,6 +2029,435 @@ export class PaymentController {
         } catch (error) {
             next(error);
         }
+    }
+
+    // MY_COIN Test Methods
+    async getMyCoinBalance(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const user = (req as any).user;
+
+            if (!user.walletAddress) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet address not found",
+                });
+            }
+
+            const balance = await paymentService.getMyCoinBalance(user.walletAddress);
+            const formattedBalance = balance / Math.pow(10, CONSTANTS.MY_COIN.DECIMALS);
+
+            res.json({
+                success: true,
+                data: {
+                    address: user.walletAddress,
+                    rawBalance: balance.toString(),
+                    formattedBalance: formattedBalance,
+                    currency: "MY_COIN",
+                    decimals: CONSTANTS.MY_COIN.DECIMALS,
+                    coinType: CONSTANTS.MY_COIN.TYPE,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getMyCoinObjects(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const user = (req as any).user;
+
+            if (!user.walletAddress) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet address not found",
+                });
+            }
+
+            const coinObjects = await (paymentService as any).getUserMyCoinObjects(user.walletAddress);
+
+            res.json({
+                success: true,
+                data: {
+                    address: user.walletAddress,
+                    objects: coinObjects.map((obj: {objectId: string, balance: string}) => ({
+                        objectId: obj.objectId,
+                        balance: obj.balance,
+                        formattedBalance: parseInt(obj.balance) / Math.pow(10, CONSTANTS.MY_COIN.DECIMALS),
+                    })),
+                    totalObjects: coinObjects.length,
+                    totalBalance: coinObjects.reduce((sum: number, obj: {objectId: string, balance: string}) => sum + parseInt(obj.balance), 0),
+                    coinType: CONSTANTS.MY_COIN.TYPE,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async testMyCoinPayment(
+        req: Request,
+        res: Response
+    ): Promise<void | Response> {
+        try {
+            const { recipientAddress, amount } = req.body;
+            const user = (req as any).user;
+
+            // Input validation
+            if (!recipientAddress || !amount) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing recipientAddress or amount",
+                });
+            }
+
+            if (!user.walletAddress) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet address not found. Please set up your wallet first.",
+                });
+            }
+
+            // Validate recipient address format
+            if (!recipientAddress.startsWith('0x') || recipientAddress.length !== 66) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid recipient address format. Must be a valid Sui address.",
+                });
+            }
+
+            // Validate amount
+            if (amount <= 0 || isNaN(amount)) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid amount. Must be a positive number.",
+                });
+            }
+
+            // Get user with encrypted private key
+            const userWithKey = await User.findById(user._id).select('+encryptedPrivateKey');
+            if (!userWithKey || !userWithKey.encryptedPrivateKey) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet not configured. Private key not found.",
+                });
+            }
+
+            // Check MY_COIN balance
+            logger.info(`Checking MY_COIN balance for address: ${user.walletAddress}`);
+            const balance = await paymentService.getMyCoinBalance(user.walletAddress);
+            const requiredAmount = amount * Math.pow(10, CONSTANTS.MY_COIN.DECIMALS);
+
+            logger.info(`MY_COIN payment validation:`, {
+                userAddress: user.walletAddress,
+                recipientAddress: recipientAddress,
+                balance: balance,
+                balanceFormatted: balance / Math.pow(10, CONSTANTS.MY_COIN.DECIMALS),
+                requiredAmount: requiredAmount,
+                requiredFormatted: amount,
+                decimals: CONSTANTS.MY_COIN.DECIMALS,
+            });
+
+            if (balance < requiredAmount) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Insufficient MY_COIN balance`,
+                    details: {
+                        required: `${amount} MY_COIN`,
+                        available: `${balance / Math.pow(10, CONSTANTS.MY_COIN.DECIMALS)} MY_COIN`,
+                        rawBalance: balance,
+                        rawRequired: requiredAmount,
+                    }
+                });
+            }
+
+            // Check SUI balance for gas
+            const suiClient = getSuiClient();
+            const suiBalance = await suiClient.getBalance({
+                owner: user.walletAddress,
+                coinType: '0x2::sui::SUI'
+            });
+
+            const minGasRequired = CONSTANTS.DEFAULT_GAS_BUDGET; // 20_000_000 MIST = 0.02 SUI
+            if (parseInt(suiBalance.totalBalance) < minGasRequired) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Insufficient SUI balance for gas fees",
+                    details: {
+                        required: `${minGasRequired / 1_000_000_000} SUI`,
+                        available: `${parseInt(suiBalance.totalBalance) / 1_000_000_000} SUI`
+                    }
+                });
+            }
+
+            // Execute optimized transaction
+            const result = await this.executeMyCoindTransaction(
+                userWithKey,
+                recipientAddress,
+                amount
+            );
+
+            res.json({
+                success: true,
+                message: "MY_COIN payment completed successfully",
+                data: {
+                    txHash: result.digest,
+                    amount: amount,
+                    currency: "MY_COIN",
+                    from: user.walletAddress,
+                    to: recipientAddress,
+                    gasUsed: result.effects?.gasUsed,
+                    status: result.effects?.status?.status,
+                    explorerUrl: `https://suiscan.xyz/testnet/tx/${result.digest}`,
+                },
+            });
+        } catch (error) {
+            logger.error("MY_COIN payment error:", error);
+
+            // Provide more specific error messages
+            let errorMessage = "Transaction failed";
+            if (error instanceof Error) {
+                if (error.message.includes('Insufficient balance')) {
+                    errorMessage = "Insufficient coin balance for this transaction";
+                } else if (error.message.includes('Gas budget')) {
+                    errorMessage = "Transaction exceeded gas budget";
+                } else if (error.message.includes('Object not found')) {
+                    errorMessage = "Coin objects not found. Please refresh your wallet";
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+
+            return res.status(500).json({
+                success: false,
+                error: errorMessage,
+                details: error instanceof Error ? error.message : undefined
+            });
+        }
+    }
+
+    // Helper method for MY_COIN transactions with optimized coin handling
+    private async executeMyCoindTransaction(user: any, recipientAddress: string, amount: number) {
+        const { Ed25519Keypair } = await import('@mysten/sui/keypairs/ed25519');
+        const { Transaction } = await import('@mysten/sui/transactions');
+
+        // Handle private key formats
+        let keypair: Ed25519Keypair;
+        let actualSenderAddress: string;
+
+        if (user.encryptedPrivateKey.startsWith('suiprivkey1')) {
+            keypair = Ed25519Keypair.fromSecretKey(user.encryptedPrivateKey);
+            actualSenderAddress = keypair.getPublicKey().toSuiAddress();
+        } else {
+            const privateKey = decryptPrivateKey(user.encryptedPrivateKey);
+            const keyBuffer = Buffer.from(privateKey, 'base64');
+            const secretKey = keyBuffer.length > 32 ? keyBuffer.subarray(0, 32) : keyBuffer;
+            keypair = Ed25519Keypair.fromSecretKey(secretKey);
+            actualSenderAddress = keypair.getPublicKey().toSuiAddress();
+        }
+
+        logger.info('Keypair derived address:', actualSenderAddress);
+        logger.info('Database wallet address:', user.walletAddress);
+
+        // CRITICAL FIX: Always use the keypair's derived address
+        // The coins MUST be owned by the address that the keypair can sign for
+        const senderAddress = actualSenderAddress;
+
+        // Check if there's an address mismatch
+        if (user.walletAddress !== actualSenderAddress) {
+            logger.warn('Address mismatch detected:', {
+                dbAddress: user.walletAddress,
+                keyAddress: actualSenderAddress,
+                info: 'Will attempt to use keypair address for transaction'
+            });
+        }
+
+        // Get MY_COIN objects
+        const suiClient = getSuiClient();
+        const requiredAmount = amount * Math.pow(10, CONSTANTS.MY_COIN.DECIMALS);
+
+        logger.info('Fetching MY_COIN objects:', {
+            address: senderAddress,
+            coinType: CONSTANTS.MY_COIN.TYPE,
+            requiredAmount: requiredAmount,
+            requiredFormatted: amount
+        });
+
+        // Get coins using the reliable getCoins API - use the actual signing address
+        const coinsResponse = await suiClient.getCoins({
+            owner: senderAddress,
+            coinType: CONSTANTS.MY_COIN.TYPE,
+        });
+
+        if (!coinsResponse.data || coinsResponse.data.length === 0) {
+            throw new Error(`No MY_COIN objects found for address ${senderAddress}`);
+        }
+
+        // Sort coins by balance for optimal selection
+        const sortedCoins = coinsResponse.data.sort((a, b) => {
+            const balanceA = BigInt(a.balance);
+            const balanceB = BigInt(b.balance);
+            if (balanceA < balanceB) return -1;
+            if (balanceA > balanceB) return 1;
+            return 0;
+        });
+
+        logger.info('Available MY_COIN objects:', {
+            count: sortedCoins.length,
+            coins: sortedCoins.map(c => ({
+                objectId: c.coinObjectId,
+                balance: c.balance,
+                balanceFormatted: parseInt(c.balance) / Math.pow(10, CONSTANTS.MY_COIN.DECIMALS)
+            }))
+        });
+
+        // Build optimized transaction
+        const tx = new Transaction();
+        // IMPORTANT: Set sender to the actual signing address, not the DB address
+        tx.setSender(actualSenderAddress);
+
+        // Strategy 1: Find exact match coin
+        const exactCoin = sortedCoins.find(coin =>
+            BigInt(coin.balance) === BigInt(requiredAmount)
+        );
+
+        if (exactCoin) {
+            logger.info('Using exact match coin:', {
+                objectId: exactCoin.coinObjectId,
+                balance: exactCoin.balance
+            });
+
+            // Direct transfer without split
+            tx.transferObjects(
+                [tx.object(exactCoin.coinObjectId)],
+                tx.pure.address(recipientAddress)
+            );
+        } else {
+            // Strategy 2: Find single sufficient coin
+            const sufficientCoin = sortedCoins.find(coin =>
+                BigInt(coin.balance) >= BigInt(requiredAmount)
+            );
+
+            if (sufficientCoin) {
+                logger.info('Using single sufficient coin with split:', {
+                    objectId: sufficientCoin.coinObjectId,
+                    balance: sufficientCoin.balance,
+                    splitting: requiredAmount
+                });
+
+                // Split only what's needed
+                const [paymentCoin] = tx.splitCoins(
+                    tx.object(sufficientCoin.coinObjectId),
+                    [tx.pure.u64(requiredAmount)]
+                );
+                tx.transferObjects([paymentCoin], tx.pure.address(recipientAddress));
+            } else {
+                // Strategy 3: Merge minimum required coins
+                logger.info('Need to merge multiple coins');
+
+                let accumulatedBalance = BigInt(0);
+                const coinsToUse = [];
+
+                for (const coin of sortedCoins) {
+                    coinsToUse.push(coin);
+                    accumulatedBalance += BigInt(coin.balance);
+
+                    if (accumulatedBalance >= BigInt(requiredAmount)) {
+                        break;
+                    }
+                }
+
+                if (accumulatedBalance < BigInt(requiredAmount)) {
+                    throw new Error(
+                        `Insufficient total balance. Required: ${requiredAmount}, ` +
+                        `Available: ${accumulatedBalance.toString()}`
+                    );
+                }
+
+                logger.info('Merging coins:', {
+                    count: coinsToUse.length,
+                    totalBalance: accumulatedBalance.toString(),
+                    coins: coinsToUse.map(c => ({
+                        objectId: c.coinObjectId,
+                        balance: c.balance
+                    }))
+                });
+
+                // Use first coin as primary
+                const primaryCoin = tx.object(coinsToUse[0].coinObjectId);
+
+                // Merge additional coins if needed
+                if (coinsToUse.length > 1) {
+                    const coinsToMerge = coinsToUse.slice(1).map(c =>
+                        tx.object(c.coinObjectId)
+                    );
+                    tx.mergeCoins(primaryCoin, coinsToMerge);
+                }
+
+                // Split exact amount needed
+                const [paymentCoin] = tx.splitCoins(primaryCoin, [
+                    tx.pure.u64(requiredAmount)
+                ]);
+
+                // Transfer the payment
+                tx.transferObjects([paymentCoin], tx.pure.address(recipientAddress));
+            }
+        }
+
+        // Set gas budget and gas payment
+        tx.setGasBudget(CONSTANTS.DEFAULT_GAS_BUDGET);
+
+        // Specify gas payment object (use SUI coins for gas) - use actual signing address
+        const suiCoins = await suiClient.getCoins({
+            owner: senderAddress,
+            coinType: '0x2::sui::SUI',
+            limit: 1
+        });
+
+        if (suiCoins.data && suiCoins.data.length > 0) {
+            tx.setGasPayment([{
+                objectId: suiCoins.data[0].coinObjectId,
+                version: suiCoins.data[0].version,
+                digest: suiCoins.data[0].digest
+            }]);
+        }
+
+        logger.info('Executing transaction with optimized coin handling');
+
+        // Execute transaction
+        const result = await suiClient.signAndExecuteTransaction({
+            transaction: tx,
+            signer: keypair,
+            options: {
+                showEffects: true,
+                showObjectChanges: true,
+                showEvents: true,
+            },
+        });
+
+        // Wait for transaction confirmation
+        await suiClient.waitForTransaction({
+            digest: result.digest,
+            options: {
+                showEffects: true,
+                showObjectChanges: true,
+            }
+        });
+
+        logger.info('Transaction completed:', {
+            digest: result.digest,
+            status: result.effects?.status?.status,
+            gasUsed: result.effects?.gasUsed
+        });
+
+        return result;
     }
 }
 

@@ -4,6 +4,13 @@ export declare const CONSTANTS: {
     MIN_TRANSACTION_AMOUNT: number;
     MAX_TRANSACTION_AMOUNT: number;
     DEFAULT_GAS_BUDGET: number;
+    MY_COIN: {
+        PACKAGE_ID: string;
+        MODULE: string;
+        STRUCT: string;
+        TYPE: string;
+        DECIMALS: number;
+    };
     DAILY_TRANSACTION_LIMIT: number;
     DAILY_AMOUNT_LIMIT: number;
     MONTHLY_AMOUNT_LIMIT: number;

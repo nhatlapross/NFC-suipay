@@ -66,7 +66,7 @@ const transactionSchema = new mongoose_1.Schema({
     },
     currency: {
         type: String,
-        default: "SUI",
+        default: "MY_COIN",
     },
     merchantId: {
         type: mongoose_1.Schema.Types.ObjectId,

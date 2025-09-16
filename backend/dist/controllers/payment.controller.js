@@ -1687,6 +1687,110 @@ class PaymentController {
             next(error);
         }
     }
+    // MY_COIN Test Methods
+    async getMyCoinBalance(req, res, next) {
+        try {
+            const user = req.user;
+            if (!user.walletAddress) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet address not found",
+                });
+            }
+            const balance = await paymentService.getMyCoinBalance(user.walletAddress);
+            const formattedBalance = balance / Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS);
+            res.json({
+                success: true,
+                data: {
+                    address: user.walletAddress,
+                    rawBalance: balance.toString(),
+                    formattedBalance: formattedBalance,
+                    currency: "MY_COIN",
+                    decimals: constants_1.CONSTANTS.MY_COIN.DECIMALS,
+                    coinType: constants_1.CONSTANTS.MY_COIN.TYPE,
+                },
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    async getMyCoinObjects(req, res, next) {
+        try {
+            const user = req.user;
+            if (!user.walletAddress) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet address not found",
+                });
+            }
+            const coinObjects = await paymentService.getUserMyCoinObjects(user.walletAddress);
+            res.json({
+                success: true,
+                data: {
+                    address: user.walletAddress,
+                    objects: coinObjects.map((obj) => ({
+                        objectId: obj.objectId,
+                        balance: obj.balance,
+                        formattedBalance: parseInt(obj.balance) / Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS),
+                    })),
+                    totalObjects: coinObjects.length,
+                    totalBalance: coinObjects.reduce((sum, obj) => sum + parseInt(obj.balance), 0),
+                    coinType: constants_1.CONSTANTS.MY_COIN.TYPE,
+                },
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    async testMyCoinPayment(req, res, next) {
+        try {
+            const { recipientAddress, amount } = req.body;
+            const user = req.user;
+            if (!recipientAddress || !amount) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing recipientAddress or amount",
+                });
+            }
+            if (!user.walletAddress) {
+                return res.status(400).json({
+                    success: false,
+                    error: "User wallet address not found",
+                });
+            }
+            // Check balance first
+            const balance = await paymentService.getMyCoinBalance(user.walletAddress);
+            const requiredAmount = amount * Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS);
+            if (balance < requiredAmount) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Insufficient balance. Required: ${amount} MY_COIN, Available: ${balance / Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS)} MY_COIN`,
+                });
+            }
+            // Execute test transaction
+            const result = await paymentService.executeBlockchainTransaction(user, recipientAddress, amount);
+            res.json({
+                success: true,
+                message: "Test MY_COIN payment completed successfully",
+                data: {
+                    txHash: result.digest,
+                    amount: amount,
+                    currency: "MY_COIN",
+                    from: user.walletAddress,
+                    to: recipientAddress,
+                    gasUsed: result.effects?.gasUsed,
+                    status: result.effects?.status?.status,
+                    explorerUrl: `https://suiscan.xyz/testnet/tx/${result.digest}`,
+                },
+            });
+        }
+        catch (error) {
+            logger_1.default.error("Test MY_COIN payment error:", error);
+            next(error);
+        }
+    }
 }
 exports.PaymentController = PaymentController;
 exports.paymentController = new PaymentController();

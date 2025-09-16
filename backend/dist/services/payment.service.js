@@ -40,7 +40,7 @@ class PaymentService {
                 cardUuid,
                 type: 'payment',
                 amount,
-                currency: 'SUI',
+                currency: 'MY_COIN',
                 merchantId: merchant._id,
                 merchantName: merchant.merchantName,
                 status: 'pending',
@@ -103,6 +103,12 @@ class PaymentService {
         if (card.monthlySpent + amount > user.monthlyLimit) {
             throw new Error('Monthly limit exceeded');
         }
+        // Check MY_COIN balance
+        const myCoinBalance = await this.getMyCoinBalance(user.walletAddress);
+        const requiredAmount = amount * Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS);
+        if (myCoinBalance < requiredAmount) {
+            throw new Error(`Insufficient MY_COIN balance. Required: ${amount} MY_COIN, Available: ${myCoinBalance / Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS)} MY_COIN`);
+        }
         // Check card limits
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -124,11 +130,28 @@ class PaymentService {
         // Build transaction
         const tx = new transactions_1.Transaction();
         tx.setSender(user.walletAddress);
+        // Get user's MY_COIN objects
+        const myCoinObjects = await this.getUserMyCoinObjects(user.walletAddress);
+        if (myCoinObjects.length === 0) {
+            throw new Error('No MY_COIN balance found');
+        }
+        // Calculate total available balance
+        const totalBalance = myCoinObjects.reduce((sum, obj) => sum + parseInt(obj.balance), 0);
+        const requiredAmount = amount * Math.pow(10, constants_1.CONSTANTS.MY_COIN.DECIMALS);
+        if (totalBalance < requiredAmount) {
+            throw new Error(`Insufficient MY_COIN balance. Required: ${requiredAmount}, Available: ${totalBalance}`);
+        }
+        // Merge coins if needed
+        let primaryCoin = myCoinObjects[0].objectId;
+        if (myCoinObjects.length > 1) {
+            const coinsToMerge = myCoinObjects.slice(1).map(obj => obj.objectId);
+            tx.mergeCoins(primaryCoin, coinsToMerge);
+        }
         // Split coins for payment
-        const [paymentCoin] = tx.splitCoins(tx.gas, [
-            tx.pure.u64(amount * 1_000_000_000) // Convert to MIST
+        const [paymentCoin] = tx.splitCoins(primaryCoin, [
+            tx.pure.u64(requiredAmount)
         ]);
-        // Transfer to merchant
+        // Transfer MY_COIN to merchant
         tx.transferObjects([paymentCoin], tx.pure.address(recipientAddress));
         // Set gas budget
         tx.setGasBudget(constants_1.CONSTANTS.DEFAULT_GAS_BUDGET);
@@ -146,6 +169,46 @@ class PaymentService {
             digest: result.digest,
         });
         return result;
+    }
+    async getUserMyCoinObjects(address) {
+        try {
+            // Get all objects owned by the user
+            const objects = await this.suiClient.getOwnedObjects({
+                owner: address,
+                filter: {
+                    StructType: constants_1.CONSTANTS.MY_COIN.TYPE,
+                },
+                options: {
+                    showContent: true,
+                    showType: true,
+                },
+            });
+            const coinObjects = [];
+            for (const obj of objects.data) {
+                if (obj.data?.content && 'fields' in obj.data.content) {
+                    const fields = obj.data.content.fields;
+                    coinObjects.push({
+                        objectId: obj.data.objectId,
+                        balance: fields.balance || '0',
+                    });
+                }
+            }
+            return coinObjects;
+        }
+        catch (error) {
+            logger_1.default.error('Error getting MY_COIN objects:', error);
+            return [];
+        }
+    }
+    async getMyCoinBalance(address) {
+        try {
+            const coinObjects = await this.getUserMyCoinObjects(address);
+            return coinObjects.reduce((total, obj) => total + parseInt(obj.balance), 0);
+        }
+        catch (error) {
+            logger_1.default.error('Error getting MY_COIN balance:', error);
+            return 0;
+        }
     }
     async updateCardUsage(card, amount) {
         card.dailySpent += amount;

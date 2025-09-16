@@ -6,7 +6,7 @@ import { Card, ICard } from '../models/Card.model';
 import { Transaction as TransactionModel, ITransaction } from '../models/Transaction.model';
 import { Merchant } from '../models/Merchant.model';
 import { decryptPrivateKey } from './encryption.service';
-import { getCached, setCached } from '../config/redis.config';
+import { getCachedSafe, setCachedSafe } from '../config/redis.config';
 import { CONSTANTS } from '../config/constants';
 import logger from '../utils/logger';
 
@@ -43,7 +43,7 @@ export class PaymentService {
         cardUuid,
         type: 'payment',
         amount,
-        currency: 'SUI',
+        currency: 'MY_COIN',
         merchantId: merchant._id,
         merchantName: merchant.merchantName,
         status: 'pending',
@@ -117,25 +117,33 @@ export class PaymentService {
     if (card.dailySpent + amount > user.dailyLimit) {
       throw new Error('Daily limit exceeded');
     }
-    
+
     // Check user monthly limit
     if (card.monthlySpent + amount > user.monthlyLimit) {
       throw new Error('Monthly limit exceeded');
     }
-    
+
+    // Check MY_COIN balance
+    const myCoinBalance = await this.getMyCoinBalance(user.walletAddress!);
+    const requiredAmount = amount * Math.pow(10, CONSTANTS.MY_COIN.DECIMALS);
+
+    if (myCoinBalance < requiredAmount) {
+      throw new Error(`Insufficient MY_COIN balance. Required: ${amount} MY_COIN, Available: ${myCoinBalance / Math.pow(10, CONSTANTS.MY_COIN.DECIMALS)} MY_COIN`);
+    }
+
     // Check card limits
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     if (card.lastResetDate < today) {
       // Reset daily spending
       card.dailySpent = 0;
-      
+
       // Reset monthly if needed
       if (card.lastResetDate.getMonth() !== today.getMonth()) {
         card.monthlySpent = 0;
       }
-      
+
       card.lastResetDate = today;
       await card.save();
     }
@@ -149,22 +157,44 @@ export class PaymentService {
     // Decrypt private key
     const privateKey = decryptPrivateKey(user.encryptedPrivateKey!);
     const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
-    
+
     // Build transaction
     const tx = new Transaction();
     tx.setSender(user.walletAddress!);
-    
+
+    // Get user's MY_COIN objects
+    const myCoinObjects = await this.getUserMyCoinObjects(user.walletAddress!);
+
+    if (myCoinObjects.length === 0) {
+      throw new Error('No MY_COIN balance found');
+    }
+
+    // Calculate total available balance
+    const totalBalance = myCoinObjects.reduce((sum, obj) => sum + parseInt(obj.balance), 0);
+    const requiredAmount = amount * Math.pow(10, CONSTANTS.MY_COIN.DECIMALS);
+
+    if (totalBalance < requiredAmount) {
+      throw new Error(`Insufficient MY_COIN balance. Required: ${requiredAmount}, Available: ${totalBalance}`);
+    }
+
+    // Merge coins if needed
+    let primaryCoin = myCoinObjects[0].objectId;
+    if (myCoinObjects.length > 1) {
+      const coinsToMerge = myCoinObjects.slice(1).map(obj => obj.objectId);
+      tx.mergeCoins(primaryCoin, coinsToMerge);
+    }
+
     // Split coins for payment
-    const [paymentCoin] = tx.splitCoins(tx.gas, [
-      tx.pure.u64(amount * 1_000_000_000) // Convert to MIST
+    const [paymentCoin] = tx.splitCoins(primaryCoin, [
+      tx.pure.u64(requiredAmount)
     ]);
-    
-    // Transfer to merchant
+
+    // Transfer MY_COIN to merchant
     tx.transferObjects([paymentCoin], tx.pure.address(recipientAddress));
-    
+
     // Set gas budget
     tx.setGasBudget(CONSTANTS.DEFAULT_GAS_BUDGET);
-    
+
     // Execute transaction
     const result = await this.suiClient.signAndExecuteTransaction({
       transaction: tx,
@@ -174,13 +204,98 @@ export class PaymentService {
         showObjectChanges: true,
       },
     });
-    
+
     // Wait for transaction to be indexed
     await this.suiClient.waitForTransaction({
       digest: result.digest,
     });
-    
+
     return result;
+  }
+
+  private async getUserMyCoinObjects(address: string): Promise<Array<{objectId: string, balance: string}>> {
+    try {
+      // Get all objects owned by the user
+      const objects = await this.suiClient.getOwnedObjects({
+        owner: address,
+        filter: {
+          StructType: CONSTANTS.MY_COIN.TYPE,
+        },
+        options: {
+          showContent: true,
+          showType: true,
+          showDisplay: true,
+        },
+      });
+
+      logger.info(`Found ${objects.data.length} MY_COIN objects for address ${address}`);
+
+      const coinObjects: Array<{objectId: string, balance: string}> = [];
+
+      for (const obj of objects.data) {
+        logger.info(`Processing object:`, {
+          objectId: obj.data?.objectId,
+          type: obj.data?.type,
+          content: obj.data?.content
+        });
+
+        if (obj.data?.content && 'fields' in obj.data.content) {
+          const fields = obj.data.content.fields as any;
+
+          // Try different possible field names for balance
+          let balance = '0';
+          if (fields.balance) {
+            balance = fields.balance.toString();
+          } else if (fields.value) {
+            balance = fields.value.toString();
+          } else if (fields.amount) {
+            balance = fields.amount.toString();
+          }
+
+          logger.info(`Extracted balance: ${balance} from fields:`, fields);
+
+          coinObjects.push({
+            objectId: obj.data.objectId,
+            balance,
+          });
+        }
+      }
+
+      logger.info(`Total coin objects found: ${coinObjects.length}`);
+      return coinObjects;
+    } catch (error) {
+      logger.error('Error getting MY_COIN objects:', error);
+      return [];
+    }
+  }
+
+  async getMyCoinBalance(address: string): Promise<number> {
+    try {
+      // Method 1: Try using getBalance API
+      try {
+        const balance = await this.suiClient.getBalance({
+          owner: address,
+          coinType: CONSTANTS.MY_COIN.TYPE,
+        });
+
+        if (balance && parseInt(balance.totalBalance) > 0) {
+          logger.info(`MY_COIN balance via getBalance API: ${balance.totalBalance}`);
+          return parseInt(balance.totalBalance);
+        }
+      } catch (balanceError) {
+        logger.warn('getBalance API failed, trying object method:', balanceError);
+      }
+
+      // Method 2: Fallback to object method
+      const coinObjects = await this.getUserMyCoinObjects(address);
+      const totalBalance = coinObjects.reduce((total, obj) => total + parseInt(obj.balance), 0);
+
+      logger.info(`MY_COIN balance via objects method: ${totalBalance}`);
+      return totalBalance;
+    } catch (error) {
+      logger.error('Error getting MY_COIN balance:', error);
+      return 0;
+    }
   }
 
   private async updateCardUsage(card: ICard, amount: number): Promise<void> {
@@ -231,17 +346,17 @@ export class PaymentService {
 
   async getTransactionById(txId: string): Promise<ITransaction | null> {
     // Check cache
-    const cached = await getCached(`tx:${txId}`);
+    const cached = await getCachedSafe(`tx:${txId}`);
     if (cached) return cached;
-    
+
     const transaction = await TransactionModel.findById(txId)
       .populate('userId', 'fullName email')
       .populate('merchantId', 'merchantName');
-    
+
     if (transaction) {
-      await setCached(`tx:${txId}`, transaction, CONSTANTS.CACHE_TTL.TRANSACTION);
+      await setCachedSafe(`tx:${txId}`, transaction, CONSTANTS.CACHE_TTL.TRANSACTION);
     }
-    
+
     return transaction;
   }
 
@@ -312,7 +427,7 @@ export class PaymentService {
 
     // Check cache first
     const cacheKey = `payment_stats:${userId}:${period}:${cardUuid || 'all'}`;
-    const cachedStats = await getCached(cacheKey);
+    const cachedStats = await getCachedSafe(cacheKey);
 
     if (cachedStats) {
       return { ...cachedStats, cached: true };
@@ -447,7 +562,7 @@ export class PaymentService {
       };
 
       // Cache the results for 5 minutes
-      await setCached(cacheKey, stats, 300);
+      await setCachedSafe(cacheKey, stats, 300);
 
       logger.info(`Payment stats generated`, {
         userId,

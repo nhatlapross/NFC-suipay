@@ -8,6 +8,15 @@ export const CONSTANTS = {
   MAX_TRANSACTION_AMOUNT: 10000,
   DEFAULT_GAS_BUDGET: 20_000_000, // 0.02 SUI
 
+  // Custom Coin Configuration
+  MY_COIN: {
+    PACKAGE_ID: '0x8f3c2d177fa5e156247d4de83d73fee684e5633d9f291c31a624333325f04398',
+    MODULE: 'my_coin',
+    STRUCT: 'MY_COIN',
+    TYPE: '0x8f3c2d177fa5e156247d4de83d73fee684e5633d9f291c31a624333325f04398::my_coin::MY_COIN',
+    DECIMALS: 5, // Standard Sui token decimals
+  },
+
   // Limits
   DAILY_TRANSACTION_LIMIT: 100,
   DAILY_AMOUNT_LIMIT: 5000,
