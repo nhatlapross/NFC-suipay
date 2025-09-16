@@ -2,12 +2,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import mongoose from 'mongoose';
-import { connectDatabase, disconnectDatabase } from './src/config/database';
-import { User } from './src/models/User.model';
-import { Merchant } from './src/models/Merchant.model';
-import { Transaction } from './src/models/Transaction.model';
-import { Card } from './src/models/Card.model';
-import logger from './src/utils/logger';
+import { connectDatabase, disconnectDatabase } from '../src/config/database';
+import { User } from '../src/models/User.model';
+import { Merchant } from '../src/models/Merchant.model';
+import { Transaction } from '../src/models/Transaction.model';
+import { Card } from '../src/models/Card.model';
+import logger from '../src/utils/logger';
 
 interface MigrationEntry {
   version: number;

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { adminService } = require('./dist/services/admin.service.js');
+const { adminService } = require('../dist/services/admin.service.js');
 
 // Test configuration
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/nfc-payment-app';

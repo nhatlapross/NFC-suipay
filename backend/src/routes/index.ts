@@ -7,6 +7,7 @@ import userRoutes from './user.routes';
 import merchantRoutes from './merchant.routes';
 import adminRoutes from './admin.routes';
 import posRoutes from './pos.routes';
+import sponsorRoutes from './sponsor.routes';
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.get('/', (_req, res) => {
       merchant: '/api/merchant',
       admin: '/api/admin',
       pos: '/api/pos',
+      sponsor: '/api/sponsor',
     },
   });
 });
@@ -39,6 +41,7 @@ router.use('/user', userRoutes);
 router.use('/merchant', merchantRoutes);
 router.use('/admin', adminRoutes);
 router.use('/pos', posRoutes);
+router.use('/sponsor', sponsorRoutes);
 
 // 404 handler for API routes
 router.use('*', (_req, res) => {
