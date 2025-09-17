@@ -23,7 +23,7 @@ export default function MerchantTerminal() {
         <>
         {/* Metrics Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="p-5 border-4 border-black bg-white">
+          <Card className="p-5 border-4 border-black bg-white shadow-[8px_8px_0_black]">
             <div className="flex items-start gap-3">
               <div className="bg-[#ff005c] p-2 rounded">
                 <DollarSign className="h-4 w-4 text-white" />
@@ -35,7 +35,7 @@ export default function MerchantTerminal() {
             </div>
           </Card>
 
-          <Card className="p-5 border-4 border-black bg-white">
+          <Card className="p-5 border-4 border-black bg-white shadow-[8px_8px_0_black]">
             <div className="flex items-start gap-3">
               <div className="bg-[#00f0ff] p-2 rounded">
                 <TrendingUp className="h-4 w-4 text-black" />
@@ -47,7 +47,7 @@ export default function MerchantTerminal() {
             </div>
           </Card>
 
-          <Card className="p-5 border-4 border-black bg-white">
+          <Card className="p-5 border-4 border-black bg-white shadow-[8px_8px_0_black]">
             <div className="flex items-start gap-3">
               <div className="bg-[#4ade80] p-2 rounded">
                 <Users className="h-4 w-4 text-black" />
@@ -59,7 +59,7 @@ export default function MerchantTerminal() {
             </div>
           </Card>
 
-          <Card className="p-5 border-4 border-black bg-white">
+          <Card className="p-5 border-4 border-black bg-white shadow-[8px_8px_0_black]">
             <div className="flex items-start gap-3">
               <div className="bg-[#facc15] p-2 rounded">
                 <Clock className="h-4 w-4 text-black" />
@@ -73,7 +73,7 @@ export default function MerchantTerminal() {
         </div>
 
         {/* Quick Actions */}
-        <Card className="p-6 border-4 border-black bg-white">
+        <Card className="p-6 border-4 border-black bg-white shadow-[8px_8px_0_black]">
           <h2 className="text-2xl font-bold text-black mb-4 uppercase tracking-wide">Quick Actions</h2>
           <div className="space-y-4">
             <Button onClick={() => setShowNfc(true)} className="w-full bg-[#ff005c] hover:bg-[#ff005c]/90 text-white border-4 border-black h-20 text-base font-bold p-0">
@@ -111,7 +111,7 @@ export default function MerchantTerminal() {
         </Card>
 
         {/* Recent Transactions */}
-        <Card className="p-6 border-4 border-black bg-white">
+        <Card className="p-6 border-4 border-black bg-white shadow-[8px_8px_0_black]">
           <h2 className="text-2xl font-bold text-black mb-4 uppercase tracking-wide">Recent Transactions</h2>
 
           <Button

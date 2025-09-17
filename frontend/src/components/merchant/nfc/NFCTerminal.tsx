@@ -79,7 +79,7 @@ export default function NFCTerminal() {
   return (
     <div className="max-w-3xl mx-auto px-8 py-8">
       {/* NFC Payment Section */}
-      <Card className="p-4 border-2 border-[#000000]">
+      <Card className="p-4 border-4 border-[#000000] shadow-[8px_8px_0_black]">
         <div className="flex items-center space-x-2 mb-2">
           <CreditCard className="w-4 h-4" />
           <span className="font-bold text-sm">NFC PAYMENT</span>
@@ -88,7 +88,7 @@ export default function NFCTerminal() {
       </Card>
 
       {/* Payment Amount */}
-      <Card className="p-4 border-2 border-[#000000] mt-4">
+      <Card className="p-4 border-4 border-[#000000] shadow-[8px_8px_0_black] mt-4">
         <div className="mb-2">
           <span className="font-bold text-sm">PAYMENT AMOUNT</span>
         </div>
@@ -99,7 +99,7 @@ export default function NFCTerminal() {
       </Card>
 
       {/* Main Status Area */}
-      <Card className="p-10 border-2 border-[#000000] min-h-[260px] flex flex-col items-center justify-center text-center mt-4">
+      <Card className="p-10 border-4 border-[#000000] shadow-[8px_8px_0_black] min-h-[260px] flex flex-col items-center justify-center text-center mt-4">
         <div className="mb-6">{data.icon}</div>
         <h3 className="font-bold text-xl mb-3">{data.title}</h3>
         {data.description && <p className="text-sm text-[#757575] mb-4">{data.description}</p>}
@@ -111,7 +111,7 @@ export default function NFCTerminal() {
         )}
 
         {currentState === 'success' && (
-          <Card className="bg-[#dcfce7] border-[#166534] p-4 mt-4">
+          <Card className="bg-[#dcfce7] border-[#166534] border-4 p-4 mt-4 shadow-[6px_6px_0_black]">
             <div className="text-sm">
               <div className="font-bold text-[#166534]">TRANSACTION COMPLETED</div>
               <div className="text-[#15803d]">ID: {data.transactionId}</div>
@@ -121,7 +121,7 @@ export default function NFCTerminal() {
         )}
 
         {currentState === 'failed' && (
-          <Card className="bg-red-50 border-red-300 p-4 mt-4">
+          <Card className="bg-red-50 border-red-300 border-4 p-4 mt-4 shadow-[6px_6px_0_black]">
             <div className="text-sm">
               <div className="font-bold text-red-700">TRANSACTION FAILED</div>
               <div className="text-red-600">{data.description}</div>
@@ -133,7 +133,7 @@ export default function NFCTerminal() {
       {/* Action Buttons */}
       {data.showButton && (
         <div className="mt-4 flex justify-center">
-          <Button className={`${data.buttonColor} text-white font-bold py-3 hover:opacity-90 w-full max-w-xs`} onClick={() => setCurrentState('tap')}>
+          <Button className={`${data.buttonColor} text-white font-bold py-3 hover:opacity-90 w-full max-w-xs border-4 border-black`} onClick={() => setCurrentState('tap')}>
             {data.buttonText}
           </Button>
         </div>
@@ -141,20 +141,22 @@ export default function NFCTerminal() {
 
       {data.showCancel && (
         <div className="mt-4 flex justify-center">
-        <Button className="bg-[#ff005c] text-white font-bold py-3 hover:opacity-90 mt-4" onClick={() => setCurrentState('ready')}>
-          CANCEL
-        </Button>
+          <Button className="bg-[#ff005c] text-white font-bold py-3 hover:opacity-90 border-4 border-black" onClick={() => setCurrentState('ready')}>
+            CANCEL
+          </Button>
         </div>
       )}
 
       {data.showNewPayment && (
-        <Button className="bg-[#00f0ff] text-[#000000] font-bold py-3 hover:opacity-90 mt-4" onClick={() => setCurrentState('ready')}>
-          NEW PAYMENT
-        </Button>
+        <div className="mt-4 flex justify-center">
+          <Button className="bg-[#00f0ff] text-[#000000] font-bold py-3 hover:opacity-90 border-4 border-black" onClick={() => setCurrentState('ready')}>
+            NEW PAYMENT
+          </Button>
+        </div>
       )}
 
       {/* Instructions */}
-      <Card className="p-4 border-2 border-[#000000] mt-4">
+      <Card className="p-4 border-4 border-[#000000] shadow-[8px_8px_0_black] mt-4">
         <h4 className="font-bold text-sm mb-3">NFC PAYMENT INSTRUCTIONS</h4>
         <div className="space-y-2">
           <div className="flex items-start space-x-2">
