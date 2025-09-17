@@ -5,19 +5,24 @@ import { Button } from '@/components/ui/button';
 import { DollarSign, TrendingUp, Users, Clock, CreditCard, QrCode, List, User } from 'lucide-react';
 import MerchantHeader from '@/components/merchant/MerchantHeader';
 import NFCTerminal from '@/components/merchant/nfc/NFCTerminal';
+import QRPaymentTerminal from '@/components/merchant/qr/QRPaymentTerminal';
 import { useState } from 'react';
 
 export default function MerchantTerminal() {
-  const [showNfc, setShowNfc] = useState(false);
+  const [view, setView] = useState<'dashboard' | 'nfc' | 'qr'>('dashboard');
   return (
     <div className="min-h-screen bg-[#f3f4f6]">
       {/* Header */}
       <MerchantHeader containerClassName="max-w-4xl" />
 
       <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-        {showNfc ? (
+        {view === 'nfc' ? (
           <div className="space-y-4">
             <NFCTerminal />
+          </div>
+        ) : view === 'qr' ? (
+          <div className="space-y-4">
+            <QRPaymentTerminal />
           </div>
         ) : (
         <>
@@ -76,7 +81,7 @@ export default function MerchantTerminal() {
         <Card className="p-6 border-4 border-black bg-white shadow-[8px_8px_0_black]">
           <h2 className="text-2xl font-bold text-black mb-4 uppercase tracking-wide">Quick Actions</h2>
           <div className="space-y-4">
-            <Button onClick={() => setShowNfc(true)} className="w-full bg-[#ff005c] hover:bg-[#ff005c]/90 text-white border-4 border-black h-20 text-base font-bold p-0">
+            <Button onClick={() => setView('nfc')} className="w-full bg-[#ff005c] hover:bg-[#ff005c]/90 text-white border-4 border-black h-20 text-base font-bold p-0">
               <div className="flex w-full h-full flex-col items-center justify-center gap-1 overflow-hidden text-center">
                 <CreditCard className="h-6 w-6 shrink-0" />
                 <span className="text-lg font-bold leading-tight">NFC PAYMENT</span>
@@ -84,7 +89,7 @@ export default function MerchantTerminal() {
               </div>
             </Button>
 
-            <Button className="w-full bg-[#00f0ff] hover:bg-[#00f0ff]/90 text-black border-4 border-black h-20 text-base font-bold p-0">
+            <Button onClick={() => setView('qr')} className="w-full bg-[#00f0ff] hover:bg-[#00f0ff]/90 text-black border-4 border-black h-20 text-base font-bold p-0">
               <div className="flex w-full h-full flex-col items-center justify-center gap-1 overflow-hidden text-center">
                 <QrCode className="h-6 w-6 shrink-0" />
                 <span className="text-lg font-bold leading-tight">QR PAYMENT</span>
