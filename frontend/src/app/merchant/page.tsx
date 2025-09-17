@@ -6,10 +6,11 @@ import { DollarSign, TrendingUp, Users, Clock, CreditCard, QrCode, List, User } 
 import MerchantHeader from '@/components/merchant/MerchantHeader';
 import NFCTerminal from '@/components/merchant/nfc/NFCTerminal';
 import QRPaymentTerminal from '@/components/merchant/qr/QRPaymentTerminal';
+import TransactionManagement from '@/components/merchant/transactions/TransactionManagement';
 import { useState } from 'react';
 
 export default function MerchantTerminal() {
-  const [view, setView] = useState<'dashboard' | 'nfc' | 'qr'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'nfc' | 'qr' | 'tx'>('dashboard');
   return (
     <div className="min-h-screen bg-[#f3f4f6]">
       {/* Header */}
@@ -23,6 +24,10 @@ export default function MerchantTerminal() {
         ) : view === 'qr' ? (
           <div className="space-y-4">
             <QRPaymentTerminal />
+          </div>
+        ) : view === 'tx' ? (
+          <div className="space-y-4">
+            <TransactionManagement />
           </div>
         ) : (
         <>
@@ -97,7 +102,7 @@ export default function MerchantTerminal() {
               </div>
             </Button>
 
-            <Button className="w-full bg-[#c084fc] hover:bg-[#c084fc]/90 text-black border-4 border-black h-20 text-base font-bold p-0">
+            <Button onClick={() => setView('tx')} className="w-full bg-[#c084fc] hover:bg-[#c084fc]/90 text-black border-4 border-black h-20 text-base font-bold p-0">
               <div className="flex w-full h-full flex-col items-center justify-center gap-1 overflow-hidden text-center">
                 <List className="h-6 w-6 shrink-0" />
                 <span className="text-lg font-bold leading-tight">TRANSACTIONS</span>
