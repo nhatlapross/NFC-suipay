@@ -8,10 +8,11 @@ import NFCTerminal from '@/components/merchant/nfc/NFCTerminal';
 import QRPaymentTerminal from '@/components/merchant/qr/QRPaymentTerminal';
 import TransactionManagement from '@/components/merchant/transactions/TransactionManagement';
 import MerchantSettings from '@/components/merchant/settings/MerchantSettings';
+import MerchantAPITest from '@/components/merchant/MerchantAPITest';
 import { useState } from 'react';
 
 export default function MerchantTerminal() {
-  const [view, setView] = useState<'dashboard' | 'nfc' | 'qr' | 'tx' | 'settings'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'nfc' | 'qr' | 'tx' | 'settings' | 'api-test'>('dashboard');
   return (
     <div className="min-h-screen bg-[#f3f4f6]">
       {/* Header */}
@@ -33,6 +34,10 @@ export default function MerchantTerminal() {
         ) : view === 'settings' ? (
           <div className="space-y-4">
             <MerchantSettings />
+          </div>
+        ) : view === 'api-test' ? (
+          <div className="space-y-4">
+            <MerchantAPITest />
           </div>
         ) : (
         <>
@@ -115,13 +120,23 @@ export default function MerchantTerminal() {
               </div>
             </Button>
 
-            <Button onClick={() => setView('settings')} className="w-full bg-[#fb923c] hover:bg-[#fb923c]/90 text-black border-4 border-black h-20 text-base font-bold p-0">
-              <div className="flex w-full h-full flex-col items-center justify-center gap-1 overflow-hidden text-center">
-                <User className="h-6 w-6 shrink-0" />
-                <span className="text-lg font-bold leading-tight">PROFILE</span>
-                <span className="text-sm opacity-90 leading-tight">SETTINGS</span>
-              </div>
-            </Button>
+                        <Button onClick={() => setView('settings')} className="w-full bg-[#fb923c] hover:bg-[#fb923c]/90 text-black border-4 border-black h-20 text-base font-bold p-0">
+                          <div className="flex w-full h-full flex-col items-center justify-center gap-1 overflow-hidden text-center">
+                            <User className="h-6 w-6 shrink-0" />
+                            <span className="text-lg font-bold leading-tight">PROFILE</span>
+                            <span className="text-sm opacity-90 leading-tight">SETTINGS</span>
+                          </div>
+                        </Button>
+
+                        <Button onClick={() => setView('api-test')} className="w-full bg-[#8b5cf6] hover:bg-[#8b5cf6]/90 text-white border-4 border-black h-20 text-base font-bold p-0">
+                          <div className="flex w-full h-full flex-col items-center justify-center gap-1 overflow-hidden text-center">
+                            <div className="h-6 w-6 shrink-0 bg-white rounded flex items-center justify-center">
+                              <span className="text-[#8b5cf6] font-bold text-sm">API</span>
+                            </div>
+                            <span className="text-lg font-bold leading-tight">API TEST</span>
+                            <span className="text-sm opacity-90 leading-tight">CONNECTION</span>
+                          </div>
+                        </Button>
           </div>
         </Card>
 

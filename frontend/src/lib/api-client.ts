@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { PaymentRequest, PaymentResponse, Transaction } from '@/types';
 
-const API_URL = 'http://localhost:8080/api';
+const API_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080'}/api`;
 
 const api: any = axios.create({
   baseURL: API_URL,
@@ -53,6 +53,7 @@ export async function registerAPI(data: {
   password: string;
   phoneNumber: string;
   fullName: string;
+  role?: 'user' | 'merchant';
 }) {
   return api.post('/auth/register', data);
 }

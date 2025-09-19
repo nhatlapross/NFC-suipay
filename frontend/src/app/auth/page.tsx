@@ -20,6 +20,7 @@ export default function AuthPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [otp, setOtp] = useState('');
+  const [role, setRole] = useState<'user' | 'merchant'>('user');
   
   const { login, register } = useAuth();
   const router = useRouter();
@@ -65,7 +66,7 @@ export default function AuthPage() {
         setLoading(false);
         return;
       }
-      await register({ email, password, fullName, phoneNumber });
+      await register({ email, password, fullName, phoneNumber, role });
       setMessage('Đăng ký thành công! Vui lòng xác thực số điện thoại.');
       setMode('verify');
     } catch (err: any) {
@@ -258,6 +259,33 @@ export default function AuthPage() {
                   className="w-full p-3 border-4 border-neo-black font-mono bg-neo-white focus:outline-none focus:shadow-brutal"
                   required
                 />
+              </div>
+              <div>
+                <label className="block font-mono text-xs font-bold text-neo-black mb-2">ACCOUNT TYPE</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRole('user')}
+                    className={`p-3 border-4 border-neo-black font-mono font-bold transition-all ${
+                      role === 'user' 
+                        ? 'bg-neo-pink text-neo-white shadow-brutal' 
+                        : 'bg-neo-white text-neo-black hover:shadow-brutal'
+                    }`}
+                  >
+                    USER
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('merchant')}
+                    className={`p-3 border-4 border-neo-black font-mono font-bold transition-all ${
+                      role === 'merchant' 
+                        ? 'bg-neo-pink text-neo-white shadow-brutal' 
+                        : 'bg-neo-white text-neo-black hover:shadow-brutal'
+                    }`}
+                  >
+                    MERCHANT
+                  </button>
+                </div>
               </div>
               <button
                 type="submit"
