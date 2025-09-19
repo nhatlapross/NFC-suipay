@@ -1,23 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import merchantAPI, { MerchantCredentials } from '@/lib/merchant-api';
 
 export default function MerchantSettings() {
   const [form, setForm] = useState({
-    businessName: 'Coffee Corner Cafe',
-    businessType: 'Cafe',
-    address:
-      '123 Main Street, Downtown District\n123 Main Street, Downtown District',
-    taxId: 'TAX_ID_123456789',
-    email: 'owner@coffeecorner.com',
-    phone: '+1 (555) 123-4567',
-    description:
-      'A cozy neighborhood cafe serving premium coffee and fresh pastries.\nA cozy neighborhood cafe serving premium coffee and fresh pastries.',
+    businessName: '',
+    businessType: '',
+    address: '',
+    taxId: '',
+    email: '',
+    phone: '',
+    description: '',
+    walletAddress: '',
+    settlementPeriod: 'daily' as 'daily' | 'weekly' | 'monthly',
+    webhookUrl: '',
     logoFile: null as File | null,
   });
+
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const onChange = (key: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -28,10 +35,95 @@ export default function MerchantSettings() {
     setForm({ ...form, logoFile: f });
   };
 
+  // Load merchant profile using stored credentials
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+      try {
+        const stored = localStorage.getItem('merchantCredentials');
+        if (!stored) {
+          setError('Missing merchant credentials. Please register merchant first.');
+          return;
+        }
+        const creds: MerchantCredentials = JSON.parse(stored);
+        merchantAPI.setCredentials(creds);
+
+        const [profileRes, settingsRes] = await Promise.all([
+          merchantAPI.getProfile(),
+          merchantAPI.getSettings(),
+        ]);
+        if (profileRes.success && profileRes.data) {
+          const p = profileRes.data;
+          setForm({
+            businessName: p.merchantName || '',
+            businessType: p.businessType || '',
+            address: [
+              p.address?.street,
+              p.address?.city,
+              p.address?.state,
+              p.address?.country,
+              p.address?.postalCode,
+            ].filter(Boolean).join(', '),
+            taxId: '',
+            email: p.email || '',
+            phone: p.phoneNumber || '',
+            description: '',
+            walletAddress: p.walletAddress || '',
+            settlementPeriod: (settingsRes.success && settingsRes.data?.settlementPeriod) || 'daily',
+            webhookUrl: (settingsRes.success && settingsRes.data?.webhookUrl) || '',
+            logoFile: null,
+          });
+        } else {
+          setError(profileRes.error || 'Failed to load merchant profile');
+        }
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load merchant profile');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
   const onSave = async () => {
-    // Placeholder: integrate with backend merchant profile update
-    console.log('Saving settings', form);
-    alert('Settings saved (mock)');
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      // Map the simple textarea address to structured fields (best-effort split)
+      const parts = form.address.split(',').map(s => s.trim());
+      const [street, city, state, country, postalCode] = [
+        parts[0] || '',
+        parts[1] || '',
+        parts[2] || '',
+        parts[3] || '',
+        parts[4] || '',
+      ];
+
+      const updateProfileRes = await merchantAPI.updateProfile({
+        merchantName: form.businessName,
+        businessType: form.businessType,
+        email: form.email,
+        phoneNumber: form.phone,
+        address: { street, city, state, country, postalCode },
+      } as any);
+      const updateSettingsRes = await merchantAPI.updateSettings({
+        webhookUrl: form.webhookUrl,
+        settlementPeriod: form.settlementPeriod,
+      });
+
+      if (updateProfileRes.success && updateSettingsRes.success) {
+        setSuccess('Settings saved successfully');
+      } else {
+        setError(updateProfileRes.error || updateSettingsRes.error || 'Failed to save settings');
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -41,7 +133,19 @@ export default function MerchantSettings() {
           <span className="text-xl">STORE INFORMATION</span>
         </h3>
 
-        <div className="space-y-4">
+        {/* Status banners */}
+        {error && (
+          <div className="mb-4 p-3 border-2 border-red-500 bg-red-50 text-sm font-bold text-red-700">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-4 p-3 border-2 border-green-600 bg-green-50 text-sm font-bold text-green-700">
+            {success}
+          </div>
+        )}
+
+        <div className="space-y-4 opacity-100">
           <div>
             <div className="text-[11px] font-bold mb-1">BUSINESS NAME</div>
             <Input value={form.businessName} onChange={onChange('businessName')} className="border-4 border-black" />
@@ -76,6 +180,31 @@ export default function MerchantSettings() {
             <Input value={form.phone} onChange={onChange('phone')} className="border-4 border-black" />
           </div>
 
+          {/* Wallet address (read-only) */}
+          <div>
+            <div className="text-[11px] font-bold mb-1">WALLET ADDRESS</div>
+            <Input value={form.walletAddress} readOnly className="border-4 border-black bg-gray-100" />
+          </div>
+
+          {/* Webhook + Settlement */}
+          <div>
+            <div className="text-[11px] font-bold mb-1">WEBHOOK URL</div>
+            <Input value={form.webhookUrl} onChange={onChange('webhookUrl')} className="border-4 border-black" placeholder="https://your-domain.com/webhook" />
+          </div>
+
+          <div>
+            <div className="text-[11px] font-bold mb-1">SETTLEMENT PERIOD</div>
+            <select
+              value={form.settlementPeriod}
+              onChange={(e) => setForm({ ...form, settlementPeriod: e.target.value as any })}
+              className="w-full p-2 border-4 border-black bg-white text-sm"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+
           <div>
             <div className="text-[11px] font-bold mb-1">STORE DESCRIPTION</div>
             <textarea
@@ -102,8 +231,8 @@ export default function MerchantSettings() {
           </div>
 
           <div className="pt-2">
-            <Button onClick={onSave} className="w-full border-4 border-black bg-[#16a34a] hover:bg-[#16a34a]/90 font-extrabold">
-              SAVE SETTINGS
+            <Button disabled={saving || loading} onClick={onSave} className="w-full border-4 border-black bg-[#16a34a] hover:bg-[#16a34a]/90 font-extrabold disabled:opacity-60">
+              {saving ? 'SAVING...' : 'SAVE SETTINGS'}
             </Button>
           </div>
         </div>
