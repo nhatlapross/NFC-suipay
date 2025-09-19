@@ -1,46 +1,77 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import merchantAPI, { MerchantCredentials, Transaction as MerchantTx } from '@/lib/merchant-api';
 
-type TxStatus = 'PAID' | 'PENDING' | 'CANCELLED';
-
-interface TxItem {
-  id: string;
-  customer: string;
-  amount: number;
-  date: string; // ISO string
-  type: 'NFC' | 'QR';
-  status: TxStatus;
-}
-
-const MOCK_TX: TxItem[] = [
-  { id: 'TXN_001', customer: 'John Doe', amount: 45.5, date: '2024-01-15T14:32:15Z', type: 'NFC', status: 'PAID' },
-  { id: 'TXN_002', customer: 'Jane Smith', amount: 128.75, date: '2024-01-15T14:28:42Z', type: 'QR', status: 'PAID' },
-  { id: 'TXN_003', customer: 'Mike Johnson', amount: 67.2, date: '2024-01-15T14:25:18Z', type: 'NFC', status: 'CANCELLED' },
-  { id: 'TXN_004', customer: 'Sarah Wilson', amount: 234.0, date: '2024-01-15T14:22:33Z', type: 'QR', status: 'PAID' },
-  { id: 'TXN_005', customer: 'Tom Brown', amount: 89.99, date: '2024-01-15T14:18:55Z', type: 'NFC', status: 'PENDING' },
-];
+type UiStatus = 'PAID' | 'PENDING' | 'CANCELLED';
 
 export default function TransactionManagement() {
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<'ALL' | TxStatus>('ALL');
-  const [selected, setSelected] = useState<TxItem | null>(null);
+  const [status, setStatus] = useState<'ALL' | UiStatus>('ALL');
+  const [selected, setSelected] = useState<MerchantTx | null>(null);
+  const [transactions, setTransactions] = useState<MerchantTx[]>([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async (pageNum = page, pageSize = limit) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const stored = localStorage.getItem('merchantCredentials');
+      if (!stored) {
+        setError('Missing merchant credentials');
+        return;
+      }
+      const creds: MerchantCredentials = JSON.parse(stored);
+      merchantAPI.setCredentials(creds);
+      const res = await merchantAPI.getPayments(pageNum, pageSize);
+      if (res.success && res.data) {
+        setTransactions(res.data.payments || []);
+        const pag = res.data.pagination || { current: pageNum, total: 0, count: 0, limit: pageSize };
+        setTotal(pag.count || 0);
+      } else {
+        setError(res.error || 'Failed to load transactions');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load(1, limit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limit]);
 
   const filtered = useMemo(() => {
-    return MOCK_TX.filter((tx) => {
-      const matchQuery = (tx.id + ' ' + tx.customer).toLowerCase().includes(query.toLowerCase());
-      const matchStatus = status === 'ALL' ? true : tx.status === status;
+    const mapStatus = (s?: string): UiStatus =>
+      s === 'completed' ? 'PAID' : s === 'pending' ? 'PENDING' : 'CANCELLED';
+    return transactions.filter((tx) => {
+      const id = tx.transactionId || tx._id || '';
+      const name = tx.customerName || '';
+      const matchQuery = (id + ' ' + name).toLowerCase().includes(query.toLowerCase());
+      const matchStatus = status === 'ALL' ? true : mapStatus(tx.status) === status;
       return matchQuery && matchStatus;
     });
-  }, [query, status]);
+  }, [query, status, transactions]);
 
   const exportCsv = () => {
     const header = 'id,customer,amount,date,type,status\n';
     const rows = filtered
-      .map((t) => `${t.id},${t.customer},${t.amount},${t.date},${t.type},${t.status}`)
+      .map((t) => {
+        const id = t.transactionId || t._id;
+        const customer = t.customerName || '';
+        const amount = t.amount;
+        const date = t.createdAt;
+        const type = (t as any).type || 'N/A';
+        const statusText = t.status;
+        return `${id},${customer},${amount},${date},${type},${statusText}`;
+      })
       .join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -51,7 +82,7 @@ export default function TransactionManagement() {
     URL.revokeObjectURL(url);
   };
 
-  const StatusBadge = ({ s }: { s: TxStatus }) => {
+  const StatusBadge = ({ s }: { s: UiStatus }) => {
     const styles =
       s === 'PAID'
         ? 'bg-green-100 text-green-700 border-green-700'
@@ -91,27 +122,35 @@ export default function TransactionManagement() {
         </div>
       </Card>
 
+      {/* Error/Loading */}
+      {error && (
+        <Card className="p-3 border-4 border-black bg-red-50 text-red-700 font-bold">{error}</Card>
+      )}
+      {loading && (
+        <Card className="p-3 border-4 border-black text-sm">Loading transactions...</Card>
+      )}
+
       {/* List and Details */}
       <div className="grid grid-cols-1 gap-5">
         <Card className="p-4 border-4 border-black shadow-[8px_8px_0_black]">
           <h4 className="font-extrabold tracking-wide mb-3">TRANSACTIONS ({filtered.length})</h4>
           <div className="space-y-3">
             {filtered.map((tx) => (
-              <div key={tx.id} className="border-2 border-black p-3 bg-white">
+              <div key={tx._id} className="border-2 border-black p-3 bg-white">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 border-2 border-black ${tx.type === 'NFC' ? 'bg-[#ff005c]' : 'bg-[#00f0ff]'}`}></div>
-                    <span className="font-extrabold text-sm">{tx.id}</span>
+                    <div className={`w-3 h-3 border-2 border-black ${tx.currency === 'SUI' ? 'bg-[#ff005c]' : 'bg-[#00f0ff]'}`}></div>
+                    <span className="font-extrabold text-sm">{tx.transactionId || tx._id}</span>
                   </div>
-                  <StatusBadge s={tx.status} />
+                  <StatusBadge s={tx.status === 'completed' ? 'PAID' : tx.status === 'pending' ? 'PENDING' : 'CANCELLED'} />
                 </div>
                 <div className="grid grid-cols-2 text-xs text-gray-700">
                   <div>Customer:</div>
-                  <div className="text-black font-bold text-right">{tx.customer}</div>
+                  <div className="text-black font-bold text-right">{tx.customerName || '-'}</div>
                   <div>Amount:</div>
-                  <div className="text-black font-bold text-right">{tx.amount.toFixed(2)} SUI</div>
+                  <div className="text-black font-bold text-right">{Number(tx.amount).toFixed(2)} {tx.currency || 'SUI'}</div>
                   <div>Date/Time:</div>
-                  <div className="text-right">{new Date(tx.date).toLocaleString()}</div>
+                  <div className="text-right">{new Date(tx.createdAt).toLocaleString()}</div>
                 </div>
                 <div className="mt-3 flex justify-end">
                   <Button onClick={() => setSelected(tx)} variant="outline" className="border-2 border-black text-xs font-bold">
@@ -120,6 +159,47 @@ export default function TransactionManagement() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between pt-4">
+            <div className="text-xs">Total: {total}</div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="border-2 border-black text-xs font-bold"
+                disabled={page === 1 || loading}
+                onClick={() => {
+                  const p = Math.max(1, page - 1);
+                  setPage(p);
+                  load(p, limit);
+                }}
+              >
+                Prev
+              </Button>
+              <span className="text-xs font-bold">Page {page}</span>
+              <Button
+                variant="outline"
+                className="border-2 border-black text-xs font-bold"
+                disabled={loading || filtered.length === 0 || (page * limit) >= total}
+                onClick={() => {
+                  const p = page + 1;
+                  setPage(p);
+                  load(p, limit);
+                }}
+              >
+                Next
+              </Button>
+              <select
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                className="border-2 border-black text-xs px-2 py-1 bg-white"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
         </Card>
       </div>
@@ -135,21 +215,21 @@ export default function TransactionManagement() {
               <div className="space-y-3 text-sm">
                 <div className="grid grid-cols-2">
                   <div>TRANSACTION ID</div>
-                  <div className="font-bold text-right">{selected.id}</div>
+                  <div className="font-bold text-right">{selected.transactionId || selected._id}</div>
                   <div>TYPE</div>
-                  <div className="text-right font-bold">{selected.type}</div>
+                  <div className="text-right font-bold">{(selected as any).type || 'N/A'}</div>
                   <div>CUSTOMER NAME</div>
-                  <div className="font-bold text-right">{selected.customer}</div>
+                  <div className="font-bold text-right">{selected.customerName || '-'}</div>
                   <div>AMOUNT</div>
-                  <div className="font-bold text-right">{selected.amount.toFixed(2)} SUI</div>
+                  <div className="font-bold text-right">{Number(selected.amount).toFixed(2)} {selected.currency || 'SUI'}</div>
                   <div>STATUS</div>
-                  <div className="text-right"><StatusBadge s={selected.status} /></div>
+                  <div className="text-right"><StatusBadge s={selected.status === 'completed' ? 'PAID' : selected.status === 'pending' ? 'PENDING' : 'CANCELLED'} /></div>
                   <div>DATE & TIME</div>
-                  <div className="text-right">{new Date(selected.date).toLocaleString()}</div>
+                  <div className="text-right">{new Date(selected.createdAt).toLocaleString()}</div>
                 </div>
                 <div>
                   <div className="font-bold text-xs mb-1">QR CODE DATA</div>
-                  <Input readOnly value={`QR_CODE_DATA_${selected.id}`} className="border-2 border-black" />
+                  <Input readOnly value={`QR_CODE_DATA_${selected.transactionId || selected._id}` } className="border-2 border-black" />
                 </div>
                 <div>
                   <div className="font-bold text-xs mb-1">NOTES</div>

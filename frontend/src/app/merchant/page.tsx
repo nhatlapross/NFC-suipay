@@ -9,10 +9,34 @@ import QRPaymentTerminal from '@/components/merchant/qr/QRPaymentTerminal';
 import TransactionManagement from '@/components/merchant/transactions/TransactionManagement';
 import MerchantSettings from '@/components/merchant/settings/MerchantSettings';
 import MerchantAPITest from '@/components/merchant/MerchantAPITest';
-import { useState } from 'react';
+import MerchantRecentTransactions from '@/components/merchant/MerchantRecentTransactions';
+import { useEffect, useState } from 'react';
+import merchantAPI, { MerchantCredentials, PaymentStats } from '@/lib/merchant-api';
 
 export default function MerchantTerminal() {
   const [view, setView] = useState<'dashboard' | 'nfc' | 'qr' | 'tx' | 'settings' | 'api-test'>('dashboard');
+  const [stats, setStats] = useState<PaymentStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setStatsLoading(true);
+        setStatsError(null);
+        const stored = localStorage.getItem('merchantCredentials');
+        if (!stored) return;
+        const creds: MerchantCredentials = JSON.parse(stored);
+        merchantAPI.setCredentials(creds);
+        const res = await merchantAPI.getPaymentStats();
+        if (res.success && res.data) setStats(res.data);
+        else setStatsError(res.error || 'Failed to load stats');
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+    loadStats();
+  }, []);
   return (
     <div className="min-h-screen bg-[#f3f4f6]">
       {/* Header */}
@@ -49,7 +73,7 @@ export default function MerchantTerminal() {
                 <DollarSign className="h-4 w-4 text-white" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-black">2,847 SUI</div>
+                <div className="text-2xl font-bold text-black">{stats ? `${Number(stats.today.volume || 0).toFixed(2)} SUI` : (statsLoading ? '...' : '0.00 SUI')}</div>
                 <div className="text-sm text-gray-600 uppercase tracking-wide">TODAY'S SALES</div>
               </div>
             </div>
@@ -61,7 +85,7 @@ export default function MerchantTerminal() {
                 <TrendingUp className="h-4 w-4 text-black" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-black">156</div>
+                <div className="text-2xl font-bold text-black">{stats ? stats.today.transactions : (statsLoading ? '...' : 0)}</div>
                 <div className="text-sm text-gray-600 uppercase tracking-wide">TRANSACTIONS</div>
               </div>
             </div>
@@ -73,8 +97,8 @@ export default function MerchantTerminal() {
                 <Users className="h-4 w-4 text-black" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-black">89</div>
-                <div className="text-sm text-gray-600 uppercase tracking-wide">CUSTOMERS</div>
+                <div className="text-2xl font-bold text-black">{stats ? stats.overall.transactions : (statsLoading ? '...' : 0)}</div>
+                <div className="text-sm text-gray-600 uppercase tracking-wide">OVERALL TRANSACTIONS</div>
               </div>
             </div>
           </Card>
@@ -85,7 +109,7 @@ export default function MerchantTerminal() {
                 <Clock className="h-4 w-4 text-black" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-black">12s</div>
+                <div className="text-2xl font-bold text-black">—</div>
                 <div className="text-sm text-gray-600 uppercase tracking-wide">AVG TIME</div>
               </div>
             </div>
@@ -143,63 +167,14 @@ export default function MerchantTerminal() {
         {/* Recent Transactions */}
         <Card className="p-6 border-4 border-black bg-white shadow-[8px_8px_0_black]">
           <h2 className="text-2xl font-bold text-black mb-4 uppercase tracking-wide">Recent Transactions</h2>
-
           <Button
             variant="outline"
+            onClick={() => setView('tx')}
             className="w-full mb-5 border-2 border-black bg-[#e5e7eb] hover:bg-[#e5e7eb]/80 text-black font-bold text-base"
           >
             VIEW ALL
           </Button>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-4 border-2 border-black bg-white">
-              <div className="flex items-center gap-3">
-                <div className="bg-[#ff005c] p-2 rounded">
-                  <CreditCard className="h-4 w-4 text-white" />
-                </div>
-                <div>
-                  <div className="font-bold text-black text-base">TXN_001</div>
-                  <div className="text-sm text-gray-600">John Doe</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold text-black">45.50 SUI</div>
-                <div className="text-sm text-[#16a34a] font-bold">SUCCESS</div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border-2 border-black bg-white">
-              <div className="flex items-center gap-3">
-                <div className="bg-[#00f0ff] p-2 rounded">
-                  <QrCode className="h-4 w-4 text-black" />
-                </div>
-                <div>
-                  <div className="font-bold text-black text-base">TXN_002</div>
-                  <div className="text-sm text-gray-600">Jane Smith</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold text-black">128.75 SUI</div>
-                <div className="text-sm text-[#16a34a] font-bold">SUCCESS</div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 border-2 border-black bg-white">
-              <div className="flex items-center gap-3">
-                <div className="bg-[#ff005c] p-2 rounded">
-                  <CreditCard className="h-4 w-4 text-white" />
-                </div>
-                <div>
-                  <div className="font-bold text-black text-base">TXN_003</div>
-                  <div className="text-sm text-gray-600">Mike Johnson</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="font-bold text-black">67.20 SUI</div>
-                <div className="text-sm text-[#dc2626] font-bold">FAILED</div>
-              </div>
-            </div>
-          </div>
+          <MerchantRecentTransactions />
         </Card>
         </>
         )}

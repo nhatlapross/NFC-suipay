@@ -3,26 +3,22 @@
 import React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-// Real integration can use getPaymentHistoryAPI from lib when available
+import merchantAPI, { MerchantCredentials, Transaction as MerchantTx } from '@/lib/merchant-api';
 
-type Tx = {
-  id: string;
-  customer: string;
-  amount: number;
-  status: 'success' | 'failed';
-};
+async function fetchRecent(): Promise<MerchantTx[]> {
+  const stored = localStorage.getItem('merchantCredentials');
+  if (!stored) return [];
+  const creds: MerchantCredentials = JSON.parse(stored);
+  merchantAPI.setCredentials(creds);
+  const res = await merchantAPI.getPayments(1, 5);
+  if (res.success && res.data) return res.data.payments || [];
+  return [];
+}
 
 export default function MerchantRecentTransactions() {
-  const { data } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['merchant:recentTx'],
-    queryFn: async (): Promise<Tx[]> => {
-      // Placeholder dataset; replace with payment history integration
-      return [
-        { id: 'TXN_001', customer: 'John Doe', amount: 45.5, status: 'success' },
-        { id: 'TXN_002', customer: 'Jane Smith', amount: 120.75, status: 'success' },
-        { id: 'TXN_003', customer: 'Mike Johnson', amount: 67.2, status: 'failed' },
-      ];
-    },
+    queryFn: fetchRecent,
   });
 
   return (
@@ -34,19 +30,25 @@ export default function MerchantRecentTransactions() {
         </Link>
       </div>
       <ul className="divide-y divide-gray-200">
+        {isLoading && (
+          <li className="px-4 py-3 text-xs">Loading...</li>
+        )}
+        {isError && (
+          <li className="px-4 py-3 text-xs text-red-600">Failed to load</li>
+        )}
         {data?.map((tx) => (
-          <li key={tx.id} className="px-4 py-3 flex items-center justify-between">
+          <li key={tx._id} className="px-4 py-3 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className={`w-6 h-6 rounded-sm border border-gray-900 flex items-center justify-center ${tx.status === 'success' ? 'bg-[#00e5ff]' : 'bg-[#ff007f]'}`}></div>
+              <div className={`w-6 h-6 rounded-sm border border-gray-900 flex items-center justify-center ${tx.status === 'completed' ? 'bg-[#00e5ff]' : 'bg-[#ff007f]'}`}></div>
               <div>
-                <div className="text-xs font-semibold">{tx.id}</div>
-                <div className="text-[11px] text-gray-500">{tx.customer}</div>
+                <div className="text-xs font-semibold">{tx.transactionId || tx._id}</div>
+                <div className="text-[11px] text-gray-500">{tx.customerName || '-'}</div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xs font-semibold">{tx.amount.toFixed(2)} SUI</div>
-              <div className={`text-[10px] uppercase ${tx.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                {tx.status === 'success' ? 'Success' : 'Failed'}
+              <div className="text-xs font-semibold">{Number(tx.amount).toFixed(2)} {tx.currency || 'SUI'}</div>
+              <div className={`text-[10px] uppercase ${tx.status === 'completed' ? 'text-green-600' : 'text-red-600'}`}>
+                {tx.status === 'completed' ? 'Success' : 'Failed'}
               </div>
             </div>
           </li>
