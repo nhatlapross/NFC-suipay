@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWalletContext } from '@/contexts/WalletContext';
-import { Home, CreditCard, LayoutDashboard, Clock, Settings, LogOut, Wallet } from 'lucide-react';
+import { Home, CreditCard, LayoutDashboard, Clock, Settings, LogOut, Wallet, ArrowUpDown } from 'lucide-react';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -26,6 +26,7 @@ export default function Navigation() {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/payment', label: 'Thanh toán', icon: CreditCard },
+    { href: '/swap', label: 'Swap VND/USD', icon: ArrowUpDown },
     { href: '/history', label: 'Lịch sử', icon: Clock },
     { href: '/settings', label: 'Cài đặt', icon: Settings },
     { href: '/merchant', label: 'Merchant', icon: LayoutDashboard },

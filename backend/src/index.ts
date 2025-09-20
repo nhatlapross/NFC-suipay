@@ -29,6 +29,7 @@ import fastPaymentRoutes from './routes/fastPayment.routes';
 import { socketService } from './services/socket.service';
 import { startPaymentWorkers } from './workers/paymentWorker';
 import { startNotificationWorkers } from './workers/notificationWorker';
+import { startPriceUpdaterWorker } from './workers/price-updater.worker';
 
 // Import utils
 import logger from './utils/logger';
@@ -159,6 +160,7 @@ async function startServer() {
     // Start workers
     startPaymentWorkers();
     startNotificationWorkers();
+    startPriceUpdaterWorker();
     logger.info('⚡ Background workers started');
 
     // Start server
