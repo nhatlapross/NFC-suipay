@@ -222,5 +222,14 @@ exports.merchantValidators = {
             .isFloat({ min: 0 })
             .withMessage('Monthly limit must be a positive number'),
     ],
+    createPaymentRequest: [
+        (0, express_validator_1.body)('amount')
+            .isFloat({ min: 0.01 })
+            .withMessage('Amount must be at least 0.01'),
+        (0, express_validator_1.body)('description')
+            .optional()
+            .isLength({ max: 200 })
+            .withMessage('Description must not exceed 200 characters'),
+    ],
 };
 //# sourceMappingURL=merchant.validator.js.map

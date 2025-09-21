@@ -18,13 +18,15 @@ export declare class PaymentController {
     cancelPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     createMerchantPaymentRequest(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getMerchantPaymentRequest(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    createTestMerchantPaymentRequest(req: Request, res: Response, _next: NextFunction): Promise<void | Response>;
     retryPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getPaymentMethods(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getTransactionReceipt(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     validateTransaction(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getMyCoinBalance(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getMyCoinObjects(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
-    testMyCoinPayment(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    testMyCoinPayment(req: Request, res: Response): Promise<void | Response>;
+    private executeMyCoindTransaction;
 }
 export declare const paymentController: PaymentController;
 //# sourceMappingURL=payment.controller.d.ts.map

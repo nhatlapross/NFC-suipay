@@ -95,10 +95,10 @@ export class SponsorController {
                 });
             }
 
-            if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
+            if (typeof amount !== 'number' || amount <= 0 || amount > 10000000) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Amount must be between 0.01 and 1000 sVND',
+                    error: 'Amount must be between 0.01 and 10000000 sVND',
                     code: ERROR_CODES.INVALID_INPUT
                 });
             }
@@ -201,10 +201,10 @@ export class SponsorController {
                 });
             }
 
-            if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
+            if (typeof amount !== 'number' || amount <= 0 || amount > 100000000) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Amount must be between 0.01 and 1000 sVND',
+                    error: 'Amount must be between 0.01 and 100000000 sVND',
                     code: ERROR_CODES.INVALID_INPUT
                 });
             }

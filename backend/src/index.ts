@@ -56,10 +56,10 @@ socketService.initialize(io);
 // Setup Socket.io connection handling
 io.on('connection', (socket) => {
   logger.info(`Socket connected: ${socket.id}`);
-  
+
   socket.on('authenticate', (data) => {
     const { userId, token: _token } = data;
-    
+
     // TODO: Verify JWT token here
     if (userId) {
       socketService.addUserSocket(userId, socket.id);
@@ -67,11 +67,41 @@ io.on('connection', (socket) => {
       socket.emit('authenticated', { success: true, userId });
     }
   });
-  
+
+  // QR payment room handling
+  socket.on('join-qr-room', (requestId: string) => {
+    if (requestId) {
+      logger.info(`Socket ${socket.id} joining QR room: ${requestId}`);
+      socketService.joinQRRequestRoom(requestId, socket.id);
+      socket.emit('qr-room-joined', { requestId, success: true });
+    }
+  });
+
+  socket.on('leave-qr-room', (requestId: string) => {
+    if (requestId) {
+      logger.info(`Socket ${socket.id} leaving QR room: ${requestId}`);
+      socketService.leaveQRRequestRoom(requestId, socket.id);
+      socket.emit('qr-room-left', { requestId, success: true });
+    }
+  });
+
+  // Merchant authentication (for merchant-specific events)
+  socket.on('authenticate-merchant', (data) => {
+    const { merchantId, token: _token } = data;
+
+    // TODO: Verify merchant token here
+    if (merchantId) {
+      socketService.addMerchantSocket(merchantId, socket.id);
+      socket.join(`merchant:${merchantId}`);
+      socket.emit('merchant-authenticated', { success: true, merchantId });
+    }
+  });
+
   socket.on('disconnect', () => {
     logger.info(`Socket disconnected: ${socket.id}`);
-    // Find and remove user socket (simplified approach)
-    // In production, you might want to store socket-to-user mapping
+    // Note: Socket.io automatically handles room cleanup on disconnect
+    // But we should clean up our internal tracking
+    // In a more robust implementation, we'd track socket-to-user/merchant mappings
   });
 });
 

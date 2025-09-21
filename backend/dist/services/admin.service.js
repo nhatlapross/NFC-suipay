@@ -244,7 +244,7 @@ class AdminService {
     async getTransactions(filter, page = 1, limit = 20) {
         try {
             const query = {};
-            if (filter.status)
+            if (filter.status && filter.status !== 'all')
                 query.status = filter.status;
             if (filter.merchantId)
                 query.merchantId = filter.merchantId;

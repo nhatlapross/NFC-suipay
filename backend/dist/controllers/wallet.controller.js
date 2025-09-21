@@ -27,14 +27,14 @@ class WalletController {
                 });
             }
             // Generate new keypair
-            const keypair = ed25519_1.Ed25519Keypair.generate();
+            const keypair = new ed25519_1.Ed25519Keypair();
             const publicKey = keypair.getPublicKey();
             const walletAddress = publicKey.toSuiAddress();
-            // Encrypt and store private key
-            const encryptedPrivateKey = (0, encryption_service_1.encryptPrivateKey)(Buffer.from(keypair.getSecretKey()).toString('base64'));
+            // Store private key in bech32 format (no encryption needed for bech32)
+            const privateKey = keypair.getSecretKey(); // Already in bech32 format
             // Update user with wallet info
             user.walletAddress = walletAddress;
-            user.encryptedPrivateKey = encryptedPrivateKey;
+            user.encryptedPrivateKey = privateKey; // Store bech32 format directly
             await user.save();
             res.json({
                 success: true,
@@ -161,16 +161,23 @@ class WalletController {
                     },
                 });
             }
-            // Handle private key - could be encrypted base64 or bech32
+            // Handle private key - could be encrypted or bech32 format
             let keypair;
             if (user.encryptedPrivateKey.startsWith('suiprivkey1')) {
                 // It's a bech32 format, use directly
                 keypair = ed25519_1.Ed25519Keypair.fromSecretKey(user.encryptedPrivateKey);
             }
             else {
-                // It's encrypted base64, decrypt first
+                // It's encrypted, decrypt first
                 const privateKey = (0, encryption_service_1.decryptPrivateKey)(user.encryptedPrivateKey);
-                keypair = ed25519_1.Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+                // Check if decrypted key is bech32 or raw bytes
+                if (privateKey.startsWith('suiprivkey1')) {
+                    keypair = ed25519_1.Ed25519Keypair.fromSecretKey(privateKey);
+                }
+                else {
+                    // Assume it's base64 encoded bytes
+                    keypair = ed25519_1.Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
+                }
             }
             // Build transfer transaction
             const tx = new transactions_1.Transaction();
@@ -289,7 +296,11 @@ class WalletController {
                 // Validate and create keypair from private key
                 let keypair;
                 // Try to parse private key (support different formats)
-                if (privateKey.startsWith('0x')) {
+                if (privateKey.startsWith('suiprivkey1')) {
+                    // Sui bech32 format - use directly
+                    keypair = ed25519_1.Ed25519Keypair.fromSecretKey(privateKey);
+                }
+                else if (privateKey.startsWith('0x')) {
                     // Hex format
                     const keyBytes = Buffer.from(privateKey.slice(2), 'hex');
                     keypair = ed25519_1.Ed25519Keypair.fromSecretKey(keyBytes);
@@ -301,11 +312,11 @@ class WalletController {
                 }
                 const publicKey = keypair.getPublicKey();
                 const walletAddress = publicKey.toSuiAddress();
-                // Encrypt and store private key
-                const encryptedPrivateKey = (0, encryption_service_1.encryptPrivateKey)(Buffer.from(keypair.getSecretKey()).toString('base64'));
+                // Store private key in bech32 format (recommended)
+                const storedPrivateKey = keypair.getSecretKey(); // bech32 format
                 // Update user with wallet info
                 user.walletAddress = walletAddress;
-                user.encryptedPrivateKey = encryptedPrivateKey;
+                user.encryptedPrivateKey = storedPrivateKey; // Store bech32 format
                 await user.save();
                 // Get wallet balance for response
                 let balance = 0;

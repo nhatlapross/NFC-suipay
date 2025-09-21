@@ -809,6 +809,9 @@ export class PaymentController {
         res: Response,
         next: NextFunction
     ): Promise<void | Response> {
+        // Declare transaction variable at function scope
+        let transaction: any = null;
+
         try {
             const { cardUuid, amount, merchantId, terminalId, pin } = req.body;
 
@@ -878,7 +881,7 @@ export class PaymentController {
             const totalAmount = amount + gasFee;
 
             // Create transaction record
-            const transaction = await Transaction.create({
+            transaction = await Transaction.create({
                 transactionId,
                 userId: user._id,
                 cardUuid,
@@ -902,6 +905,25 @@ export class PaymentController {
                     terminalId,
                 },
             });
+
+            // Check if this is related to a QR payment request and emit "scanned" event
+            if (req.body.requestId) {
+                socketService.emitQRStatusUpdate(req.body.requestId, 'scanned', {
+                    transactionId: transaction._id,
+                    amount: amount,
+                    cardUuid: cardUuid,
+                    merchantId: merchant.merchantId,
+                    scannedAt: new Date(),
+                    userInfo: {
+                        cardLast4: cardUuid.slice(-4)
+                    }
+                });
+
+                logger.info(`QR payment status updated to scanned`, {
+                    requestId: req.body.requestId,
+                    transactionId: transaction._id
+                });
+            }
 
             // Process directly (like the successful test script)
             const userWithKey = await User.findById(user._id).select(
@@ -975,6 +997,50 @@ export class PaymentController {
             transaction.completedAt = new Date();
             await transaction.save();
 
+            // Update card usage statistics
+            card.dailySpent += amount;
+            card.monthlySpent += amount;
+            card.usageCount += 1;
+            card.lastUsed = new Date();
+            await card.save();
+
+            // Update merchant statistics
+            if (merchant) {
+                merchant.totalTransactions = (merchant.totalTransactions || 0) + 1;
+                merchant.totalVolume = (merchant.totalVolume || 0) + amount;
+                merchant.lastTransactionAt = new Date();
+                await merchant.save();
+            }
+
+            logger.info(`Payment completed and saved to database`, {
+                transactionId: transaction._id,
+                txHash: result.digest,
+                userId: user._id,
+                merchantId: merchant.merchantId,
+                amount,
+                gasFee: actualGasFee,
+                totalAmount: amount + actualGasFee,
+            });
+
+            // Check if this is related to a QR payment request
+            if (req.body.requestId) {
+                socketService.emitQRStatusUpdate(req.body.requestId, 'completed', {
+                    transactionId: transaction._id,
+                    txHash: result.digest,
+                    amount: amount,
+                    gasFee: actualGasFee,
+                    totalAmount: amount + actualGasFee,
+                    merchantId: merchant.merchantId,
+                    explorerUrl: `https://suiscan.xyz/${process.env.SUI_NETWORK || "testnet"}/tx/${result.digest}`,
+                    completedAt: new Date()
+                });
+
+                logger.info(`QR payment status updated to completed`, {
+                    requestId: req.body.requestId,
+                    transactionId: transaction._id
+                });
+            }
+
             res.json({
                 success: true,
                 message: "Payment completed successfully",
@@ -989,6 +1055,24 @@ export class PaymentController {
                 },
             });
         } catch (error) {
+            // Make sure to update transaction status to failed
+            try {
+                if (transaction) {
+                    transaction.status = "failed";
+                    transaction.failureReason = error instanceof Error ? error.message : 'Unknown error';
+                    await transaction.save();
+
+                    logger.error("Payment failed and saved to database", {
+                        transactionId: transaction._id,
+                        userId: transaction.userId,
+                        amount: transaction.amount,
+                        error: error instanceof Error ? error.message : 'Unknown error',
+                    });
+                }
+            } catch (saveError) {
+                logger.error("Failed to save error transaction:", saveError);
+            }
+
             logger.error("Direct payment error:", error);
             next(error);
         }
@@ -1544,6 +1628,219 @@ export class PaymentController {
         }
     }
 
+    // Admin endpoint to get all transactions
+    async getAllTransactions(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = Math.min(
+                parseInt(req.query.limit as string) || CONSTANTS.DEFAULT_PAGE_SIZE,
+                CONSTANTS.MAX_PAGE_SIZE
+            );
+            const status = req.query.status as string;
+            const merchantId = req.query.merchantId as string;
+            const userId = req.query.userId as string;
+            const startDate = req.query.startDate as string;
+            const endDate = req.query.endDate as string;
+
+            const skip = (page - 1) * limit;
+
+            // Build query filters
+            const filters: any = {};
+            if (status) filters.status = status;
+            if (merchantId) filters.merchantId = merchantId;
+            if (userId) filters.userId = userId;
+
+            // Date range filter
+            if (startDate || endDate) {
+                filters.createdAt = {};
+                if (startDate) filters.createdAt.$gte = new Date(startDate);
+                if (endDate) filters.createdAt.$lte = new Date(endDate);
+            }
+
+            const [transactions, total] = await Promise.all([
+                Transaction.find(filters)
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .populate('userId', 'fullName email')
+                    .populate('merchantId', 'merchantName businessType'),
+                Transaction.countDocuments(filters),
+            ]);
+
+            const pages = Math.ceil(total / limit);
+
+            res.json({
+                success: true,
+                data: {
+                    transactions,
+                    pagination: {
+                        current: page,
+                        total: pages,
+                        count: total,
+                        limit: limit,
+                    },
+                    filters: {
+                        status,
+                        merchantId,
+                        userId,
+                        startDate,
+                        endDate,
+                    },
+                },
+            });
+        } catch (error) {
+            logger.error('Get all transactions error:', error);
+            next(error);
+        }
+    }
+
+    // Admin endpoint to get transaction analytics
+    async getTransactionAnalytics(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const period = (req.query.period as string) || 'month'; // day, week, month, year
+            const merchantId = req.query.merchantId as string;
+
+            // Calculate date range
+            const now = new Date();
+            let startDate: Date;
+
+            switch (period) {
+                case 'day':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    break;
+                case 'week':
+                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'month':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    break;
+                case 'year':
+                    startDate = new Date(now.getFullYear(), 0, 1);
+                    break;
+                default:
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            }
+
+            const matchQuery: any = {
+                createdAt: { $gte: startDate },
+                status: 'completed'
+            };
+
+            if (merchantId) {
+                matchQuery.merchantId = merchantId;
+            }
+
+            const analytics = await Transaction.aggregate([
+                { $match: matchQuery },
+                {
+                    $group: {
+                        _id: null,
+                        totalTransactions: { $sum: 1 },
+                        totalVolume: { $sum: '$amount' },
+                        totalGasFees: { $sum: '$gasFee' },
+                        averageTransaction: { $avg: '$amount' },
+                        uniqueUsers: { $addToSet: '$userId' },
+                        uniqueMerchants: { $addToSet: '$merchantId' },
+                    }
+                },
+                {
+                    $project: {
+                        totalTransactions: 1,
+                        totalVolume: 1,
+                        totalGasFees: 1,
+                        averageTransaction: 1,
+                        uniqueUsers: { $size: '$uniqueUsers' },
+                        uniqueMerchants: { $size: '$uniqueMerchants' },
+                    }
+                }
+            ]);
+
+            // Get daily breakdown
+            const dailyBreakdown = await Transaction.aggregate([
+                { $match: matchQuery },
+                {
+                    $group: {
+                        _id: {
+                            year: { $year: '$createdAt' },
+                            month: { $month: '$createdAt' },
+                            day: { $dayOfMonth: '$createdAt' },
+                        },
+                        transactions: { $sum: 1 },
+                        volume: { $sum: '$amount' },
+                        gasFees: { $sum: '$gasFee' },
+                    }
+                },
+                { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+            ]);
+
+            // Get top merchants
+            const topMerchants = await Transaction.aggregate([
+                { $match: { ...matchQuery, merchantId: { $exists: true } } },
+                {
+                    $group: {
+                        _id: '$merchantId',
+                        merchantName: { $first: '$merchantName' },
+                        transactions: { $sum: 1 },
+                        volume: { $sum: '$amount' },
+                        gasFees: { $sum: '$gasFee' },
+                    }
+                },
+                { $sort: { volume: -1 } },
+                { $limit: 10 }
+            ]);
+
+            // Get status distribution
+            const statusDistribution = await Transaction.aggregate([
+                { $match: { createdAt: { $gte: startDate } } },
+                {
+                    $group: {
+                        _id: '$status',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            res.json({
+                success: true,
+                data: {
+                    period,
+                    dateRange: {
+                        from: startDate,
+                        to: now,
+                    },
+                    overview: analytics[0] || {
+                        totalTransactions: 0,
+                        totalVolume: 0,
+                        totalGasFees: 0,
+                        averageTransaction: 0,
+                        uniqueUsers: 0,
+                        uniqueMerchants: 0,
+                    },
+                    dailyBreakdown: dailyBreakdown.map(day => ({
+                        date: `${day._id.year}-${String(day._id.month).padStart(2, '0')}-${String(day._id.day).padStart(2, '0')}`,
+                        transactions: day.transactions,
+                        volume: day.volume,
+                        gasFees: day.gasFees,
+                    })),
+                    topMerchants,
+                    statusDistribution,
+                    generatedAt: now,
+                },
+            });
+        } catch (error) {
+            logger.error('Get transaction analytics error:', error);
+            next(error);
+        }
+    }
+
     async getTransaction(
         req: Request,
         res: Response,
@@ -1829,6 +2126,24 @@ export class PaymentController {
                     testMode: true,
                     testMerchantId: testMerchant.merchantId // Store original merchant ID in metadata
                 },
+            });
+
+            // Emit QR created event
+            socketService.emitQRStatusUpdate((request._id as any).toString(), 'created', {
+                merchantId: testMerchant.merchantId,
+                amount: request.amount,
+                description,
+                qrPayload: {
+                    requestId: request._id,
+                    amount: request.amount,
+                    merchantId: testMerchant.merchantId,
+                }
+            });
+
+            logger.info(`QR payment request created with real-time updates`, {
+                requestId: request._id,
+                merchantId: testMerchant.merchantId,
+                amount: request.amount
             });
 
             return res.status(201).json({

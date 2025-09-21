@@ -15,5 +15,6 @@ export declare const merchantValidators: {
     merchantId: import("express-validator").ValidationChain[];
     updateMerchantStatus: import("express-validator").ValidationChain[];
     updateMerchantLimits: import("express-validator").ValidationChain[];
+    createPaymentRequest: import("express-validator").ValidationChain[];
 };
 //# sourceMappingURL=merchant.validator.d.ts.map

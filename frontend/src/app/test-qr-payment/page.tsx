@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { useSocket } from '@/hooks/useSocket';
 import {
   Loader2,
   QrCode,
@@ -20,7 +21,10 @@ import {
   Store,
   User,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Wifi,
+  WifiOff,
+  Eye
 } from 'lucide-react';
 
 // Test data
@@ -86,9 +90,55 @@ export default function TestQRPaymentPage() {
   const [serverStatus, setServerStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
   const [activeTab, setActiveTab] = useState('merchant');
 
+  // Socket integration for real-time QR updates
+  const { isConnected, qrStatus, joinQRRoom, leaveQRRoom, resetQRStatus } = useSocket({
+    enableQRUpdates: true,
+    qrRequestId: merchantRequest?.id
+  });
+
   useEffect(() => {
     checkServerHealth();
   }, []);
+
+  // Handle QR status updates from socket
+  useEffect(() => {
+    if (qrStatus) {
+      console.log('🔄 Received QR status update:', qrStatus);
+
+      // Update merchant request status based on socket updates
+      if (merchantRequest && qrStatus.requestId === merchantRequest.id) {
+        setMerchantRequest(prev => prev ? {
+          ...prev,
+          status: qrStatus.status
+        } : null);
+
+        // Auto-complete payment result when payment is completed via socket
+        if (qrStatus.status === 'completed' && qrStatus.txHash) {
+          setPaymentResult({
+            success: true,
+            message: 'Payment completed successfully via real-time update!',
+            transaction: {
+              transactionId: qrStatus.transactionId || '',
+              txHash: qrStatus.txHash,
+              amount: qrStatus.amount || 0,
+              gasFee: qrStatus.gasFee || 0,
+              totalAmount: qrStatus.totalAmount || 0,
+              status: 'completed',
+              explorerUrl: qrStatus.explorerUrl || ''
+            }
+          });
+        }
+      }
+    }
+  }, [qrStatus, merchantRequest]);
+
+  // Join QR room when merchant request is created
+  useEffect(() => {
+    if (merchantRequest && isConnected) {
+      console.log('📱 Joining QR room for request:', merchantRequest.id);
+      joinQRRoom(merchantRequest.id);
+    }
+  }, [merchantRequest, isConnected, joinQRRoom]);
 
   const checkServerHealth = async () => {
     try {
@@ -372,6 +422,7 @@ export default function TestQRPaymentPage() {
     setActiveTab('merchant');
     setIsCreatingRequest(false);
     setIsProcessingPayment(false);
+    resetQRStatus();
   };
 
   const generateQRCodeURL = (data: any) => {
@@ -391,6 +442,16 @@ export default function TestQRPaymentPage() {
           <Badge variant={serverStatus === 'online' ? 'default' : 'destructive'}>
             Backend: {serverStatus}
           </Badge>
+          <Badge variant={isConnected ? 'default' : 'secondary'}>
+            {isConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+            Socket: {isConnected ? 'Connected' : 'Disconnected'}
+          </Badge>
+          {qrStatus && (
+            <Badge variant="outline" className="bg-blue-50">
+              <Eye className="h-3 w-3 mr-1" />
+              QR Status: {qrStatus.status}
+            </Badge>
+          )}
           <Button variant="outline" size="sm" onClick={checkServerHealth}>
             <RefreshCw className="h-3 w-3 mr-1" />
             Refresh
@@ -607,6 +668,39 @@ export default function TestQRPaymentPage() {
                       >
                         Status: {merchantRequest.status}
                       </Badge>
+
+                      {/* Real-time status updates from socket */}
+                      {qrStatus && qrStatus.requestId === merchantRequest.id && (
+                        <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                          <h5 className="font-semibold text-blue-900 mb-2">🔴 Real-time Updates</h5>
+                          <div className="text-blue-800 space-y-1">
+                            <p><strong>Current Status:</strong> {qrStatus.status}</p>
+                            <p><strong>Last Update:</strong> {new Date(qrStatus.timestamp).toLocaleTimeString()}</p>
+
+                            {qrStatus.status === 'scanned' && qrStatus.userInfo && (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-2">
+                                <p className="font-medium text-yellow-800">📱 QR Code was scanned!</p>
+                                <p className="text-yellow-700 text-xs">Card ending in: ***{qrStatus.userInfo.cardLast4}</p>
+                              </div>
+                            )}
+
+                            {qrStatus.status === 'completed' && qrStatus.txHash && (
+                              <div className="bg-green-50 border border-green-200 rounded p-2 mt-2">
+                                <p className="font-medium text-green-800">✅ Payment Completed!</p>
+                                <p className="text-green-700 text-xs">Amount: {qrStatus.amount} SUI</p>
+                                <p className="text-green-700 text-xs">Gas: {qrStatus.gasFee} SUI</p>
+                              </div>
+                            )}
+
+                            {qrStatus.status === 'failed' && qrStatus.error && (
+                              <div className="bg-red-50 border border-red-200 rounded p-2 mt-2">
+                                <p className="font-medium text-red-800">❌ Payment Failed</p>
+                                <p className="text-red-700 text-xs">{qrStatus.error}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="text-sm space-y-1">
                         <p><strong>Request ID:</strong> {merchantRequest.id}</p>

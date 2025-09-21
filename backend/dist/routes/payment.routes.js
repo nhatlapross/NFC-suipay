@@ -13,6 +13,21 @@ router.post("/validate", auth_middleware_1.authenticate, (0, validation_middlewa
 router.post("/nfc-validate", payment_controller_1.paymentController.validateNFCPayment);
 // NFC direct processing (no auth required - PIN validated in controller)
 router.post("/process-direct", rateLimit_middleware_1.paymentLimiter, (0, validation_middleware_1.validate)(payment_validator_1.paymentValidators.processPayment), payment_controller_1.paymentController.processNFCPaymentDirect.bind(payment_controller_1.paymentController));
+// Debug endpoint to test basic functionality
+router.post("/test/debug", (req, res) => {
+    console.log('🔍 Debug endpoint called');
+    console.log('Body:', req.body);
+    console.log('Headers:', req.headers);
+    res.json({
+        success: true,
+        message: "Debug endpoint working",
+        received: req.body,
+        timestamp: new Date().toISOString()
+    });
+});
+// Test merchant QR request (no auth for testing)
+router.post("/test/merchant-request", (0, validation_middleware_1.validate)(payment_validator_1.paymentValidators.createMerchantRequest), payment_controller_1.paymentController.createTestMerchantPaymentRequest.bind(payment_controller_1.paymentController));
+router.get("/test/merchant-request/:id", payment_controller_1.paymentController.getMerchantPaymentRequest.bind(payment_controller_1.paymentController));
 // Protected routes
 router.use(auth_middleware_1.authenticate);
 router.post("/process", rateLimit_middleware_1.paymentLimiter, (0, validation_middleware_1.validate)(payment_validator_1.paymentValidators.processPayment), payment_controller_1.paymentController.processPayment);

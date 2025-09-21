@@ -85,27 +85,55 @@ app.use((0, morgan_1.default)('combined', { stream: { write: (message) => logger
 app.use('/api/', rateLimit_middleware_1.rateLimiter);
 // Performance monitoring
 // app.use(performanceMiddleware);
-// Ensure Redis is connected for each request
-app.use(async (_req, _res, next) => {
-    try {
-        if (!redis_config_1.redisClient.isReady) {
-            await (0, redis_config_1.initRedis)();
-        }
-        next();
-    }
-    catch (error) {
-        console.error('Redis connection error:', error);
-        next(); // Continue without Redis (degraded mode)
-    }
-});
+// Ensure Redis is connected for each request (remove to prevent multiple connections)
+// app.use(async (_req, _res, next) => {
+//   try {
+//     if (!redisClient.isReady) {
+//       await initRedis();
+//     }
+//     next();
+//   } catch (error) {
+//     console.error('Redis connection error:', error);
+//     next(); // Continue without Redis (degraded mode)
+//   }
+// });
 // Health check
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
+    const redisInfo = (0, redis_config_1.getConnectionInfo)();
+    const redisStats = await (0, redis_config_1.getRedisStats)();
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV,
+        redis: {
+            connected: redisInfo.isReady,
+            info: redisInfo,
+            stats: redisStats
+        }
     });
+});
+// Redis-specific health check
+app.get('/health/redis', async (_req, res) => {
+    try {
+        const redisInfo = (0, redis_config_1.getConnectionInfo)();
+        const redisStats = await (0, redis_config_1.getRedisStats)();
+        res.json({
+            success: true,
+            redis: {
+                connection: redisInfo,
+                stats: redisStats,
+                timestamp: new Date().toISOString()
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Redis health check failed',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 });
 // API Routes
 app.use('/api', routes_1.default);
@@ -166,6 +194,17 @@ process.on('unhandledRejection', (error) => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
     logger_1.default.info('SIGTERM received, shutting down gracefully');
+    // Close Redis connection
+    await (0, redis_config_1.closeRedisConnection)();
+    server.close(() => {
+        logger_1.default.info('Server closed');
+        process.exit(0);
+    });
+});
+process.on('SIGINT', async () => {
+    logger_1.default.info('SIGINT received, shutting down gracefully');
+    // Close Redis connection
+    await (0, redis_config_1.closeRedisConnection)();
     server.close(() => {
         logger_1.default.info('Server closed');
         process.exit(0);

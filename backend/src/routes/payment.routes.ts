@@ -136,4 +136,17 @@ router.get("/mycoin/balance", paymentController.getMyCoinBalance.bind(paymentCon
 router.get("/mycoin/objects", paymentController.getMyCoinObjects.bind(paymentController));
 router.post("/mycoin/test-payment", paymentController.testMyCoinPayment.bind(paymentController));
 
+// Admin endpoints for viewing all transactions
+router.get(
+    "/admin/transactions",
+    authorize("admin"),
+    paymentController.getAllTransactions.bind(paymentController)
+);
+
+router.get(
+    "/admin/analytics",
+    authorize("admin"),
+    paymentController.getTransactionAnalytics.bind(paymentController)
+);
+
 export default router;

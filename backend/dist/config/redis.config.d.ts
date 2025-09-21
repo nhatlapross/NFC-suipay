@@ -2328,6 +2328,18 @@ export declare const getRedisStats: () => Promise<{
     timestamp?: undefined;
     latency?: undefined;
 }>;
+export declare const closeRedisConnection: () => Promise<void>;
+export declare const ensureRedisConnection: () => Promise<boolean>;
+export declare const getConnectionInfo: () => {
+    isOpen: boolean;
+    isReady: boolean;
+    serverInfo: {
+        host: string | undefined;
+        port: string | undefined;
+    };
+};
+export declare const getCachedSafe: (key: string) => Promise<any>;
+export declare const setCachedSafe: (key: string, data: any, ttl?: number) => Promise<boolean>;
 export { redisClient };
 export default redisClient;
 //# sourceMappingURL=redis.config.d.ts.map

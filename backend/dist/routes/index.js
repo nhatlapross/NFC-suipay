@@ -12,6 +12,7 @@ const user_routes_1 = __importDefault(require("./user.routes"));
 const merchant_routes_1 = __importDefault(require("./merchant.routes"));
 const admin_routes_1 = __importDefault(require("./admin.routes"));
 const pos_routes_1 = __importDefault(require("./pos.routes"));
+const sponsor_routes_1 = __importDefault(require("./sponsor.routes"));
 const router = (0, express_1.Router)();
 // Health check
 router.get('/', (_req, res) => {
@@ -29,6 +30,7 @@ router.get('/', (_req, res) => {
             merchant: '/api/merchant',
             admin: '/api/admin',
             pos: '/api/pos',
+            sponsor: '/api/sponsor',
         },
     });
 });
@@ -41,6 +43,7 @@ router.use('/user', user_routes_1.default);
 router.use('/merchant', merchant_routes_1.default);
 router.use('/admin', admin_routes_1.default);
 router.use('/pos', pos_routes_1.default);
+router.use('/sponsor', sponsor_routes_1.default);
 // 404 handler for API routes
 router.use('*', (_req, res) => {
     res.status(404).json({

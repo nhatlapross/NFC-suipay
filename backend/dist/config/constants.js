@@ -15,7 +15,7 @@ exports.CONSTANTS = {
         MODULE: 'my_coin',
         STRUCT: 'MY_COIN',
         TYPE: '0x8f3c2d177fa5e156247d4de83d73fee684e5633d9f291c31a624333325f04398::my_coin::MY_COIN',
-        DECIMALS: 9, // Standard Sui token decimals
+        DECIMALS: 5, // Standard Sui token decimals
     },
     // Limits
     DAILY_TRANSACTION_LIMIT: 100,

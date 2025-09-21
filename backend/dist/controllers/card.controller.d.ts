@@ -15,7 +15,7 @@ export declare class CardController {
     resetCardLimits(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getCardTransactions(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     getCardStats(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
-    getAllCards(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    getAllCards(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     forceBlockCard(_req: Request, res: Response, next: NextFunction): Promise<void | Response>;
 }
 export declare const cardController: CardController;

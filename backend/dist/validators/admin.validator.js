@@ -265,7 +265,7 @@ exports.adminValidators = {
             .withMessage("Limit must be between 1 and 100"),
         (0, express_validator_1.query)("status")
             .optional()
-            .isIn(["pending", "processing", "completed", "failed"])
+            .isIn(["pending", "processing", "completed", "failed", "all"])
             .withMessage("Invalid transaction status"),
     ],
     getTransaction: [

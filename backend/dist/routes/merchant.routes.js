@@ -17,6 +17,9 @@ router.put("/profile", (0, validation_middleware_1.validate)(merchant_validator_
 // Merchant payments
 router.get("/payments", merchant_controller_1.merchantController.getMerchantPayments);
 router.get("/payments/stats", merchant_controller_1.merchantController.getMerchantPaymentStats);
+// Payment request creation (for QR codes)
+router.post("/payment-requests", (0, validation_middleware_1.validate)(merchant_validator_1.merchantValidators.createPaymentRequest), merchant_controller_1.merchantController.createPaymentRequest);
+router.get("/payment-requests/:id", merchant_controller_1.merchantController.getPaymentRequest);
 router.post("/payments/refund/:paymentId", (0, validation_middleware_1.validate)(merchant_validator_1.merchantValidators.refundPayment), merchant_controller_1.merchantController.refundPayment);
 // Merchant settings
 router.get("/settings", merchant_controller_1.merchantController.getMerchantSettings);

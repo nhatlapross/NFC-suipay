@@ -19,6 +19,8 @@ export declare class MerchantController {
     getAllMerchants(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     updateMerchantStatus(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
     updateMerchantLimits(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    createPaymentRequest(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
+    getPaymentRequest(req: Request, res: Response, next: NextFunction): Promise<void | Response>;
 }
 export declare const merchantController: MerchantController;
 //# sourceMappingURL=merchant.controller.d.ts.map

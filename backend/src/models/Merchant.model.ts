@@ -33,6 +33,7 @@ export interface IMerchant extends Document {
     nextSettlementDate: Date;
     totalTransactions: number;
     totalVolume: number;
+    lastTransactionAt?: Date;
     metadata?: Record<string, any>;
     terminals?: Array<{
         terminalId: string;
@@ -152,6 +153,9 @@ const merchantSchema = new Schema<IMerchant>(
         totalVolume: {
             type: Number,
             default: 0,
+        },
+        lastTransactionAt: {
+            type: Date,
         },
         terminals: [{
             terminalId: { type: String, required: true },

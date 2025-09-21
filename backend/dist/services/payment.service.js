@@ -181,18 +181,38 @@ class PaymentService {
                 options: {
                     showContent: true,
                     showType: true,
+                    showDisplay: true,
                 },
             });
+            logger_1.default.info(`Found ${objects.data.length} MY_COIN objects for address ${address}`);
             const coinObjects = [];
             for (const obj of objects.data) {
+                logger_1.default.info(`Processing object:`, {
+                    objectId: obj.data?.objectId,
+                    type: obj.data?.type,
+                    content: obj.data?.content
+                });
                 if (obj.data?.content && 'fields' in obj.data.content) {
                     const fields = obj.data.content.fields;
+                    // Try different possible field names for balance
+                    let balance = '0';
+                    if (fields.balance) {
+                        balance = fields.balance.toString();
+                    }
+                    else if (fields.value) {
+                        balance = fields.value.toString();
+                    }
+                    else if (fields.amount) {
+                        balance = fields.amount.toString();
+                    }
+                    logger_1.default.info(`Extracted balance: ${balance} from fields:`, fields);
                     coinObjects.push({
                         objectId: obj.data.objectId,
-                        balance: fields.balance || '0',
+                        balance,
                     });
                 }
             }
+            logger_1.default.info(`Total coin objects found: ${coinObjects.length}`);
             return coinObjects;
         }
         catch (error) {
@@ -202,8 +222,25 @@ class PaymentService {
     }
     async getMyCoinBalance(address) {
         try {
+            // Method 1: Try using getBalance API
+            try {
+                const balance = await this.suiClient.getBalance({
+                    owner: address,
+                    coinType: constants_1.CONSTANTS.MY_COIN.TYPE,
+                });
+                if (balance && parseInt(balance.totalBalance) > 0) {
+                    logger_1.default.info(`MY_COIN balance via getBalance API: ${balance.totalBalance}`);
+                    return parseInt(balance.totalBalance);
+                }
+            }
+            catch (balanceError) {
+                logger_1.default.warn('getBalance API failed, trying object method:', balanceError);
+            }
+            // Method 2: Fallback to object method
             const coinObjects = await this.getUserMyCoinObjects(address);
-            return coinObjects.reduce((total, obj) => total + parseInt(obj.balance), 0);
+            const totalBalance = coinObjects.reduce((total, obj) => total + parseInt(obj.balance), 0);
+            logger_1.default.info(`MY_COIN balance via objects method: ${totalBalance}`);
+            return totalBalance;
         }
         catch (error) {
             logger_1.default.error('Error getting MY_COIN balance:', error);
@@ -244,14 +281,14 @@ class PaymentService {
     }
     async getTransactionById(txId) {
         // Check cache
-        const cached = await (0, redis_config_1.getCached)(`tx:${txId}`);
+        const cached = await (0, redis_config_1.getCachedSafe)(`tx:${txId}`);
         if (cached)
             return cached;
         const transaction = await Transaction_model_1.Transaction.findById(txId)
             .populate('userId', 'fullName email')
             .populate('merchantId', 'merchantName');
         if (transaction) {
-            await (0, redis_config_1.setCached)(`tx:${txId}`, transaction, constants_1.CONSTANTS.CACHE_TTL.TRANSACTION);
+            await (0, redis_config_1.setCachedSafe)(`tx:${txId}`, transaction, constants_1.CONSTANTS.CACHE_TTL.TRANSACTION);
         }
         return transaction;
     }
@@ -314,7 +351,7 @@ class PaymentService {
         }
         // Check cache first
         const cacheKey = `payment_stats:${userId}:${period}:${cardUuid || 'all'}`;
-        const cachedStats = await (0, redis_config_1.getCached)(cacheKey);
+        const cachedStats = await (0, redis_config_1.getCachedSafe)(cacheKey);
         if (cachedStats) {
             return { ...cachedStats, cached: true };
         }
@@ -441,7 +478,7 @@ class PaymentService {
                 cached: false,
             };
             // Cache the results for 5 minutes
-            await (0, redis_config_1.setCached)(cacheKey, stats, 300);
+            await (0, redis_config_1.setCachedSafe)(cacheKey, stats, 300);
             logger_1.default.info(`Payment stats generated`, {
                 userId,
                 period,
