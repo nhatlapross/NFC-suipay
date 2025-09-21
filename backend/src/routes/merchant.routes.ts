@@ -23,7 +23,7 @@ router.post(
 );
 
 // Authentication required for all other routes
-router.get("/profile", merchantController.getMerchantProfile);
+router.get("/profile", authenticate, merchantController.getMerchantProfile);
 
 
 router.put(

@@ -201,6 +201,16 @@ export class MerchantService {
         }
     }
 
+    async getMerchantByUserId(userId: string): Promise<IMerchant | null> {
+        try {
+            const merchant = await Merchant.findOne({ userId }).select("+apiKeys.secretKey +apiKeys.webhookSecret");
+            return merchant;
+        } catch (error) {
+            logger.error("Error finding merchant by user ID:", error);
+            return null;
+        }
+    }
+
     async updateMerchantProfile(
         merchantId: string,
         updateData: Partial<MerchantRegistrationData>

@@ -157,22 +157,23 @@ export class MerchantController {
         next: NextFunction
     ): Promise<void | Response> {
         try {
-            // Get merchant ID from authenticated user or API key
-            const merchantId = (req as any).merchant?.merchantId;
+            // Get user ID from auth token
+            const userId = (req as any).user?.id;
 
-            if (!merchantId) {
+            if (!userId) {
                 return res.status(401).json({
                     success: false,
-                    error: "Merchant authentication required",
+                    error: "User authentication required",
                 });
             }
 
-            const merchant = await merchantService.getMerchantById(merchantId);
+            // Get merchant by user ID from auth token
+            const merchant = await merchantService.getMerchantByUserId(userId);
 
             if (!merchant) {
                 return res.status(404).json({
                     success: false,
-                    error: "Merchant not found",
+                    error: "Merchant not found for this user",
                 });
             }
 
@@ -195,6 +196,11 @@ export class MerchantController {
                     nextSettlementDate: merchant.nextSettlementDate,
                     totalTransactions: merchant.totalTransactions,
                     totalVolume: merchant.totalVolume,
+                    apiKeys: {
+                        publicKey: merchant.apiKeys.publicKey,
+                        secretKey: merchant.apiKeys.secretKey,
+                        webhookSecret: merchant.apiKeys.webhookSecret,
+                    },
                     createdAt: merchant.createdAt,
                     updatedAt: merchant.updatedAt,
                 },
