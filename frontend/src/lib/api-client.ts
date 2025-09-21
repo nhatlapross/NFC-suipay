@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { PaymentRequest, PaymentResponse, Transaction } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+const API_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080'}/api`;
 
 const api: any = axios.create({
   baseURL: API_URL,
@@ -53,6 +53,7 @@ export async function registerAPI(data: {
   password: string;
   phoneNumber: string;
   fullName: string;
+  role?: 'user' | 'merchant';
 }) {
   return api.post('/auth/register', data);
 }
@@ -199,4 +200,65 @@ export async function registerMerchantAPI(data: {
 
 export async function getMerchantInfoAPI(merchantId: string) {
   return api.get(`/merchant/info/${merchantId}`);
+}
+
+// Admin APIs
+export async function getAdminCardsAPI() {
+  return api.get('/admin/cards');
+}
+
+export async function getAllCardsAPI(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  type?: string;
+  userId?: string;
+}) {
+  console.log('🌐 [API Client] Calling getAllCardsAPI with URL: /card/admin/all');
+  console.log('🌐 [API Client] Params:', params);
+  console.log('🌐 [API Client] Timestamp:', Date.now());
+  
+  // Add timestamp to bypass cache
+  const url = `/card/admin/all?t=${Date.now()}`;
+  console.log('🌐 [API Client] Final URL:', url);
+  
+  return api.get(url, { params });
+}
+
+export async function getAdminCardAPI(cardId: string) {
+  return api.get(`/admin/cards/${cardId}`);
+}
+
+export async function blockAdminCardAPI(cardId: string, reason?: string) {
+  console.log('🔒 [Admin API] Block card request:', { cardId, reason });
+  const response = await api.post(`/admin/cards/${cardId}/block`, { reason });
+  console.log('🔒 [Admin API] Block card response:', response.data);
+  return response;
+}
+
+export async function unblockAdminCardAPI(cardId: string) {
+  console.log('🔓 [Admin API] Unblock card request:', { cardId });
+  const response = await api.post(`/admin/cards/${cardId}/unblock`);
+  console.log('🔓 [Admin API] Unblock card response:', response.data);
+  return response;
+}
+
+export async function getAdminDashboardAPI() {
+  return api.get('/admin/dashboard');
+}
+
+export async function getAdminHealthAPI() {
+  return api.get('/admin/health');
+}
+
+export async function getAdminTransactionsAPI(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  console.log('🌐 [API Client] Calling getAdminTransactionsAPI');
+  console.log('🌐 [API Client] Params:', params);
+  return api.get('/admin/transactions', { params });
 }

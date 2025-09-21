@@ -316,7 +316,7 @@ export class AdminService {
         try {
             const query: any = {};
 
-            if (filter.status) query.status = filter.status;
+            if (filter.status && filter.status !== 'all') query.status = filter.status;
             if (filter.merchantId) query.merchantId = filter.merchantId;
             if (filter.userId) query.userId = filter.userId;
             if (filter.cardId) query.cardId = filter.cardId;

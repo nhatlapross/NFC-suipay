@@ -28,6 +28,7 @@ export default function Navigation() {
     { href: '/payment', label: 'Thanh toán', icon: CreditCard },
     { href: '/history', label: 'Lịch sử', icon: Clock },
     { href: '/settings', label: 'Cài đặt', icon: Settings },
+    { href: '/merchant', label: 'Merchant', icon: LayoutDashboard },
   ];
 
   return (

@@ -6,31 +6,272 @@ import {
     DollarSign,
     Users,
     Activity,
+    Loader2,
+    ExternalLink,
 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { getAdminDashboardAPI, getAdminCardsAPI, getAdminTransactionsAPI } from "@/lib/api-client";
+
+interface DashboardStats {
+    totalTransactions: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    totalVolume: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    successRate: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    activeCards: number;
+    activeMerchants: number;
+    averageTransactionTime: number;
+}
+
+interface FlowStats {
+    inflow: {
+        today: number;
+        week: number;
+        month: number;
+    };
+    outflow: {
+        today: number;
+        week: number;
+        month: number;
+    };
+}
+
+interface CardStats {
+    active: number;
+    blocked: number;
+    inactive: number;
+}
+
+interface Transaction {
+    id: string;
+    amount: number;
+    type: "INFLOW" | "OUTFLOW";
+    status: "COMPLETED" | "PENDING" | "FAILED";
+    time: string;
+    txHash?: string;
+    userId?: {
+        fullName: string;
+        email: string;
+    };
+    merchantId?: {
+        merchantName: string;
+        businessType: string;
+    };
+}
 
 const Dashboard: React.FC = () => {
+    const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+    const [cardStats, setCardStats] = useState<CardStats | null>(null);
+    const [flowStats, setFlowStats] = useState<FlowStats | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+
+    useEffect(() => {
+        const loadDashboardData = async () => {
+            try {
+                setLoading(true);
+                setError("");
+                console.log('🔄 [Dashboard] Loading dashboard data...');
+
+                // Load dashboard stats
+                const dashboardResponse = await getAdminDashboardAPI();
+                console.log(' [Dashboard] Dashboard stats:', dashboardResponse);
+                
+                if (dashboardResponse?.success && dashboardResponse?.data) {
+                    setDashboardStats(dashboardResponse.data);
+                } else {
+                    // Fallback data when API fails
+                    setDashboardStats({
+                        totalTransactions: { today: 0, week: 0, month: 0 },
+                        totalVolume: { today: 0, week: 0, month: 0 },
+                        successRate: { today: 0, week: 0, month: 0 },
+                        activeCards: 0,
+                        activeMerchants: 0,
+                        averageTransactionTime: 0
+                    });
+                }
+
+                // Load card stats
+                const cardResponse = await getAdminCardsAPI();
+                console.log(' [Dashboard] Card stats:', cardResponse);
+                
+                if (cardResponse?.success && cardResponse?.data?.cardStats) {
+                    setCardStats(cardResponse.data.cardStats);
+                } else {
+                    // Fallback data when API fails
+                    setCardStats({
+                        active: 0,
+                        blocked: 0,
+                        inactive: 0
+                    });
+                }
+
+                // Load recent transactions
+                const transactionsResponse = await getAdminTransactionsAPI({
+                    page: 1,
+                    limit: 100,
+                    status: 'all'
+                });
+                console.log(' [Dashboard] Transactions:', transactionsResponse);
+                
+                if (transactionsResponse?.success && transactionsResponse?.data?.transactions) {
+                    const transactions = transactionsResponse.data.transactions;
+                    console.log('📊 [Dashboard] Raw transactions data:', transactions.slice(0, 3)); // Log first 3 transactions
+                    
+                    // Calculate flow stats from transactions
+                    const now = new Date();
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+                    const calculateFlowStats = (transactions: any[], startDate: Date) => {
+                        const filteredTxs = transactions.filter(tx => {
+                            const txDate = new Date(tx.createdAt);
+                            return txDate >= startDate && tx.status === 'completed';
+                        });
+                        
+                        const inflow = filteredTxs
+                            .filter(tx => tx.type === 'topup')
+                            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        
+                        const outflow = filteredTxs
+                            .filter(tx => ['payment', 'withdraw'].includes(tx.type))
+                            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        
+                        console.log('📊 [Dashboard] Flow calculation:', {
+                            startDate: startDate.toISOString(),
+                            totalTxs: filteredTxs.length,
+                            inflowTxs: filteredTxs.filter(tx => tx.type === 'topup').length,
+                            outflowTxs: filteredTxs.filter(tx => ['payment', 'withdraw'].includes(tx.type)).length,
+                            inflow,
+                            outflow
+                        });
+                        
+                        return { inflow, outflow };
+                    };
+
+                    const todayStats = calculateFlowStats(transactions, today);
+                    const weekStats = calculateFlowStats(transactions, weekAgo);
+                    const monthStats = calculateFlowStats(transactions, monthAgo);
+
+                    setFlowStats({
+                        inflow: {
+                            today: todayStats.inflow,
+                            week: weekStats.inflow,
+                            month: monthStats.inflow
+                        },
+                        outflow: {
+                            today: todayStats.outflow,
+                            week: weekStats.outflow,
+                            month: monthStats.outflow
+                        }
+                    });
+
+                    const formattedTransactions = transactions.map((tx: any) => ({
+                        id: tx._id || tx.id,
+                        amount: tx.amount || 0,
+                        type: (tx.type === 'topup' ? 'INFLOW' : 'OUTFLOW') as 'INFLOW' | 'OUTFLOW',
+                        status: tx.status?.toUpperCase() || 'PENDING',
+                        time: new Date(tx.createdAt).toLocaleTimeString('en-US', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        }),
+                        txHash: tx.txHash,
+                        userId: tx.userId ? {
+                            fullName: tx.userId.fullName || 'Unknown User',
+                            email: tx.userId.email || 'unknown@example.com'
+                        } : undefined
+                    }));
+                    setRecentTransactions(formattedTransactions);
+                } else {
+                    // Fallback data when no transactions
+                    setFlowStats({
+                        inflow: { today: 0, week: 0, month: 0 },
+                        outflow: { today: 0, week: 0, month: 0 }
+                    });
+                    setRecentTransactions([]);
+                }
+
+                console.log('✅ [Dashboard] Dashboard data loaded successfully');
+            } catch (err: any) {
+                console.error('💥 [Dashboard] Error loading dashboard data:', err);
+                setError(err?.response?.data?.error || "Failed to load dashboard data");
+                
+                // Set fallback data on error
+                setDashboardStats({
+                    totalTransactions: { today: 0, week: 0, month: 0 },
+                    totalVolume: { today: 0, week: 0, month: 0 },
+                    successRate: { today: 0, week: 0, month: 0 },
+                    activeCards: 0,
+                    activeMerchants: 0,
+                    averageTransactionTime: 0
+                });
+                setCardStats({
+                    active: 0,
+                    blocked: 0,
+                    inactive: 0
+                });
+                setFlowStats({
+                    inflow: { today: 0, week: 0, month: 0 },
+                    outflow: { today: 0, week: 0, month: 0 }
+                });
+                setRecentTransactions([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadDashboardData();
+    }, []);
+
+    const formatNumber = (num: number | undefined) => {
+        if (!num && num !== 0) return "0";
+        return num.toLocaleString();
+    };
+
+    const formatAmount = (amount: number | undefined) => {
+        if (!amount && amount !== 0) return "$0";
+        if (amount >= 1000000) {
+            return `$${(amount / 1000000).toFixed(1)}M`;
+        } else if (amount >= 1000) {
+            return `$${(amount / 1000).toFixed(1)}K`;
+        }
+        return `$${amount.toFixed(2)}`;
+    };
+
     const stats = [
         {
             label: "ACTIVE CARDS",
-            value: "2,847",
+            value: formatNumber(cardStats?.active),
             icon: CreditCard,
             color: "bg-[#FF005C] text-white",
         },
         {
             label: "DAILY VOLUME",
-            value: "$1.2M",
+            value: formatAmount(dashboardStats?.totalVolume?.today),
             icon: DollarSign,
             color: "bg-[#00F0FF]",
         },
         {
             label: "TOTAL USERS",
-            value: "15,432",
+            value: formatNumber(dashboardStats?.activeMerchants),
             icon: Users,
             color: "bg-black text-white",
         },
         {
             label: "TRANSACTIONS",
-            value: "8,921",
+            value: formatNumber(dashboardStats?.totalTransactions?.today),
             icon: Activity,
             color: "bg-white text-black border-2 border-black",
         },
@@ -74,8 +315,19 @@ const Dashboard: React.FC = () => {
         },
     ];
 
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-[#FF005C]" />
+                    <p className="text-lg font-semibold text-black">Loading dashboard...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 w-full">
             <div className="border-4 border-black bg-[#00F0FF] p-6 shadow-[8px_8px_0_black]">
                 <h1 className="text-3xl font-bold text-black mb-2">
                     DASHBOARD OVERVIEW
@@ -86,7 +338,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {stats.map((stat, index) => {
                     const Icon = stat.icon;
                     return (
@@ -111,7 +363,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Flow Summary */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
                 <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
                     <h2 className="text-xl font-bold mb-4 text-black">
                         INFLOW SUMMARY
@@ -125,13 +377,13 @@ const Dashboard: React.FC = () => {
                                 </span>
                             </div>
                             <span className="text-2xl font-bold text-black">
-                                $847,230
+                                {formatAmount(flowStats?.inflow?.today)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
                             <span className="font-bold text-black">WEEKLY</span>
                             <span className="text-xl font-bold text-black">
-                                $5.2M
+                                {formatAmount(flowStats?.inflow?.week)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
@@ -139,7 +391,7 @@ const Dashboard: React.FC = () => {
                                 MONTHLY
                             </span>
                             <span className="text-xl font-bold text-black">
-                                $18.7M
+                                {formatAmount(flowStats?.inflow?.month)}
                             </span>
                         </div>
                     </div>
@@ -158,13 +410,13 @@ const Dashboard: React.FC = () => {
                                 </span>
                             </div>
                             <span className="text-2xl font-bold text-white">
-                                $623,180
+                                {formatAmount(flowStats?.outflow?.today)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
                             <span className="font-bold text-black">WEEKLY</span>
                             <span className="text-xl font-bold text-black">
-                                $3.8M
+                                {formatAmount(flowStats?.outflow?.week)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-white border-2 border-black">
@@ -172,7 +424,7 @@ const Dashboard: React.FC = () => {
                                 MONTHLY
                             </span>
                             <span className="text-xl font-bold text-black">
-                                $14.2M
+                                {formatAmount(flowStats?.outflow?.month)}
                             </span>
                         </div>
                     </div>
@@ -180,22 +432,33 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Recent Transactions */}
-            <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
+            <div className="bg-white border-4 border-black p-4 lg:p-6 shadow-[6px_6px_0_black]">
                 <h2 className="text-xl font-bold mb-6 text-black">
                     RECENT TRANSACTIONS
                 </h2>
-                <div className="space-y-3">
-                    {transactions.map((tx) => (
+                {error && (
+                    <div className="mt-4 p-3 bg-red-100 border-2 border-red-500 text-red-700 font-semibold">
+                        {error}
+                    </div>
+                )}
+                <div className="space-y-3 overflow-x-auto">
+                    {recentTransactions.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            <div className="text-lg font-semibold mb-2">No transactions found</div>
+                            <div className="text-sm">Transactions will appear here when available</div>
+                        </div>
+                    ) : (
+                        recentTransactions.map((tx) => (
                         <div
                             key={tx.id}
-                            className="flex items-center justify-between p-4 border-2 border-black bg-white hover:bg-gray-100"
+                            className="flex flex-col lg:flex-row lg:items-center lg:justify-between p-3 lg:p-4 border-2 border-black bg-white hover:bg-gray-100 gap-3 lg:gap-0"
                         >
-                            <div className="flex items-center gap-4">
-                                <div className="font-bold text-black">
+                            <div className="flex flex-wrap items-center gap-2 lg:gap-4">
+                                <div className="font-bold text-black text-sm">
                                     {tx.id}
                                 </div>
                                 <div
-                                    className={`px-3 py-1 border-2 border-black font-bold text-xs ${
+                                    className={`px-2 py-1 border-2 border-black font-bold text-xs ${
                                         tx.type === "INFLOW"
                                             ? "bg-[#00F0FF] text-black"
                                             : "bg-[#FF005C] text-white"
@@ -203,28 +466,54 @@ const Dashboard: React.FC = () => {
                                 >
                                     {tx.type}
                                 </div>
+                                {tx.userId && (
+                                    <div className="text-xs text-gray-600">
+                                        {tx.userId.fullName}
+                                    </div>
+                                )}
+                                {tx.merchantId && (
+                                    <div className="text-xs text-blue-600">
+                                        {tx.merchantId.merchantName}
+                                    </div>
+                                )}
                             </div>
-                            <div className="font-bold text-black">
-                                {tx.amount}
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div
-                                    className={`px-3 py-1 border-2 border-black font-bold text-xs ${
-                                        tx.status === "COMPLETED"
-                                            ? "bg-black text-white"
-                                            : tx.status === "PENDING"
-                                            ? "bg-yellow-400 text-black"
-                                            : "bg-red-500 text-white"
-                                    }`}
-                                >
-                                    {tx.status}
+                            <div className="flex items-center justify-between lg:justify-end gap-4">
+                                <div className="font-bold text-black text-sm lg:text-base">
+                                    {formatAmount(tx.amount)}
                                 </div>
-                                <div className="text-sm font-bold text-gray-600">
-                                    {tx.time}
+                                <div className="flex items-center gap-2 lg:gap-4">
+                                    <div
+                                        className={`px-3 py-1 border-2 border-black font-bold text-xs ${
+                                            tx.status === "COMPLETED"
+                                                ? "bg-black text-white"
+                                                : tx.status === "PENDING"
+                                                ? "bg-yellow-400 text-black"
+                                                : "bg-red-500 text-white"
+                                        }`}
+                                    >
+                                        {tx.status}
+                                    </div>
+                                    {tx.txHash && (
+                                        <a
+                                            href={`https://suiscan.xyz/testnet/tx/${tx.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                        >
+                                            <ExternalLink className="w-3 h-3" />
+                                            <span className="font-mono">
+                                                {tx.txHash.substring(0, 8)}...
+                                            </span>
+                                        </a>
+                                    )}
+                                    <div className="text-sm font-bold text-gray-600">
+                                        {tx.time}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    ))}
+                        ))
+                    )}
                 </div>
             </div>
         </div>

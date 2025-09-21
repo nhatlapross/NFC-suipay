@@ -40,9 +40,9 @@ const SmartContractControls: React.FC = () => {
     ];
 
     return (
-        <div className="space-y-8">
-            <div className="border-4 border-black bg-black p-6 shadow-[8px_8px_0_black]">
-                <h1 className="text-3xl font-bold text-white mb-2">
+        <div className="space-y-8 w-full">
+            <div className="border-4 border-black bg-black p-4 lg:p-6 shadow-[8px_8px_0_black]">
+                <h1 className="text-2xl lg:text-3xl font-bold text-white mb-2">
                     SMART CONTRACT CONTROLS
                 </h1>
                 <p className="text-[#00F0FF] font-medium">
@@ -51,7 +51,7 @@ const SmartContractControls: React.FC = () => {
             </div>
 
             {/* Contract Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
                 {contractStats.map((stat, index) => {
                     const Icon = stat.icon;
                     const isStatus = stat.label === "STATUS";
@@ -94,7 +94,7 @@ const SmartContractControls: React.FC = () => {
             </div>
 
             {/* Main Controls */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
                 {/* Daily Spending Limit */}
                 <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0_black]">
                     <h2 className="text-xl font-bold mb-6 text-black flex items-center gap-3">
@@ -194,7 +194,7 @@ const SmartContractControls: React.FC = () => {
                     EMERGENCY CONTROLS
                 </h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <button
                         onClick={toggleContractPause}
                         className={`p-6 border-4 border-black font-bold hover:shadow-[6px_6px_0_black] transition-all ${

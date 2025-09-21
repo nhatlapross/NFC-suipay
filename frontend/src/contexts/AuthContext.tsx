@@ -15,6 +15,7 @@ interface AuthContextType {
     password: string;
     phoneNumber: string;
     fullName: string;
+    role?: 'user' | 'merchant';
   }) => Promise<void>;
 }
 
@@ -37,9 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(response.user);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load user:', error);
-      localStorage.removeItem('authToken');
+      // Only clear token on explicit 401; keep token on network/5xx errors to avoid bouncing
+      const status = error?.response?.status;
+      if (status === 401) {
+        localStorage.removeItem('authToken');
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -62,6 +68,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const profile = await getUserProfileAPI();
           if (profile?.success && profile?.user) {
             setUser(profile.user);
+            
+            // Check merchant registration status
+            if (profile.user.role === 'merchant') {
+              const merchantCredentials = localStorage.getItem('merchantCredentials');
+              if (!merchantCredentials) {
+                // Redirect to merchant registration if no credentials
+                window.location.href = '/merchant-register';
+                return;
+              } else {
+                // Redirect to merchant dashboard if credentials exist
+                window.location.href = '/merchant';
+                return;
+              }
+            }
           }
         } catch {}
       } else {

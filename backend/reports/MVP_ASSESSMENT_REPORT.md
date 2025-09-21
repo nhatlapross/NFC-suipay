@@ -16,7 +16,7 @@
 ---
 
 ## ✅ **NHỮNG GÌ ĐÃ SẴN SÀNG CHO MVP**
-
+ẻm 
 ### 🔐 **Authentication System** - ✅ **HOÀN THÀNH**
 - ✅ User registration/login với JWT
 - ✅ Admin role authentication  

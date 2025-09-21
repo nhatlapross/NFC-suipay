@@ -283,7 +283,7 @@ export const adminValidators = {
             .withMessage("Limit must be between 1 and 100"),
         query("status")
             .optional()
-            .isIn(["pending", "processing", "completed", "failed"])
+            .isIn(["pending", "processing", "completed", "failed", "all"])
             .withMessage("Invalid transaction status"),
     ],
 
