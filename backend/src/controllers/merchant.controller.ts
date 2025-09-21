@@ -1095,6 +1095,105 @@ export class MerchantController {
             next(error);
         }
     }
+
+    // Payment Request methods (for QR code generation)
+    async createPaymentRequest(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { amount, description } = req.body as {
+                amount: number;
+                description?: string;
+            };
+
+            if (!req.merchant) {
+                return res.status(401).json({
+                    success: false,
+                    error: "Merchant authentication required",
+                });
+            }
+
+            const merchant = req.merchant.merchant;
+
+            // Import Transaction model here to avoid circular deps
+            const { Transaction } = require('../models/transaction.model');
+
+            // Create a request record using Transaction model
+            const request = await Transaction.create({
+                type: "payment",
+                amount,
+                currency: "SUI",
+                status: "requested",
+                merchantId: merchant._id,
+                merchantName: merchant.merchantName,
+                metadata: {
+                    request: true,
+                    description,
+                    createdAt: new Date(),
+                },
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: "Merchant payment request created",
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    qrPayload: {
+                        requestId: request._id,
+                        amount: request.amount,
+                        merchantId: merchant.merchantId,
+                    },
+                },
+            });
+        } catch (error) {
+            logger.error("Create payment request error:", error);
+            next(error);
+        }
+    }
+
+    async getPaymentRequest(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            const { id } = req.params;
+
+            if (!req.merchant) {
+                return res.status(401).json({
+                    success: false,
+                    error: "Merchant authentication required",
+                });
+            }
+
+            const { Transaction } = require('../models/transaction.model');
+            const request = await Transaction.findById(id);
+
+            if (!request) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Request not found",
+                });
+            }
+
+            return res.json({
+                success: true,
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    merchantName: request.merchantName,
+                },
+            });
+        } catch (error) {
+            logger.error("Get payment request error:", error);
+            next(error);
+        }
+    }
 }
 
 export const merchantController = new MerchantController();

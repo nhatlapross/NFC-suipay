@@ -25,6 +25,32 @@ router.post(
     paymentController.processNFCPaymentDirect.bind(paymentController)
 );
 
+// Debug endpoint to test basic functionality
+router.post("/test/debug", (req, res) => {
+    console.log('🔍 Debug endpoint called');
+    console.log('Body:', req.body);
+    console.log('Headers:', req.headers);
+
+    res.json({
+        success: true,
+        message: "Debug endpoint working",
+        received: req.body,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Test merchant QR request (no auth for testing)
+router.post(
+    "/test/merchant-request",
+    validate(paymentValidators.createMerchantRequest),
+    paymentController.createTestMerchantPaymentRequest.bind(paymentController)
+);
+
+router.get(
+    "/test/merchant-request/:id",
+    paymentController.getMerchantPaymentRequest.bind(paymentController)
+);
+
 // Protected routes
 router.use(authenticate);
 

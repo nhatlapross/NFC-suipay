@@ -1780,6 +1780,81 @@ export class PaymentController {
         }
     }
 
+    // Test version that doesn't require auth (for testing only)
+    async createTestMerchantPaymentRequest(
+        req: Request,
+        res: Response,
+        _next: NextFunction
+    ): Promise<void | Response> {
+        try {
+            console.log('🧪 Test merchant payment request called');
+            console.log('Request body:', req.body);
+            console.log('Request headers:', req.headers);
+
+            const { amount, description } = req.body as {
+                amount: number;
+                description?: string;
+            };
+
+            console.log('Extracted data:', { amount, description });
+
+            // Use test merchant data (hardcoded for testing)
+            const testMerchant = {
+                _id: "test_merchant_id",
+                merchantName: "Test Shop",
+                merchantId: "mch_593200537dff4e71"
+            };
+
+            console.log('Test merchant data:', testMerchant);
+
+            // Import ObjectId for proper type casting
+            const { ObjectId } = require('mongoose').Types;
+
+            // Create a request record using Transaction model with all required fields
+            const request = await Transaction.create({
+                type: "payment",
+                amount,
+                totalAmount: amount, // Required field
+                currency: "SUI",
+                status: "pending", // Use valid enum value instead of "requested"
+                merchantId: new ObjectId(), // Generate a proper ObjectId
+                merchantName: testMerchant.merchantName,
+                userId: new ObjectId(), // Generate a proper ObjectId for test user
+                fromAddress: "0x" + "0".repeat(40), // Proper address format
+                toAddress: "0x" + "1".repeat(40), // Proper address format
+                metadata: {
+                    request: true,
+                    description,
+                    createdAt: new Date(),
+                    testMode: true,
+                    testMerchantId: testMerchant.merchantId // Store original merchant ID in metadata
+                },
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: "Test merchant payment request created",
+                request: {
+                    id: request._id,
+                    amount: request.amount,
+                    status: request.status,
+                    qrPayload: {
+                        requestId: request._id,
+                        amount: request.amount,
+                        merchantId: testMerchant.merchantId,
+                    },
+                },
+            });
+        } catch (error) {
+            console.error('❌ Test merchant payment request error:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'Internal server error',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    }
+
     async retryPayment(
         req: Request,
         res: Response,

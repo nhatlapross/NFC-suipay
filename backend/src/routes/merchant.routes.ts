@@ -38,6 +38,18 @@ router.get("/payments", merchantController.getMerchantPayments);
 
 router.get("/payments/stats", merchantController.getMerchantPaymentStats);
 
+// Payment request creation (for QR codes)
+router.post(
+    "/payment-requests",
+    validate(merchantValidators.createPaymentRequest),
+    merchantController.createPaymentRequest
+);
+
+router.get(
+    "/payment-requests/:id",
+    merchantController.getPaymentRequest
+);
+
 router.post(
     "/payments/refund/:paymentId",
     validate(merchantValidators.refundPayment),
