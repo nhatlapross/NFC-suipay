@@ -1,4 +1,4 @@
-# 💳 NFC-SuiPay: Decentralized NFC & QR Payment Platform
+# 💳 PandaPay: Decentralized NFC & QR Payment Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Sui](https://img.shields.io/badge/Blockchain-Sui-blue)](https://sui.io/)
@@ -7,33 +7,34 @@
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [System Architecture](#system-architecture)
-- [User Roles & Features](#user-roles--features)
-- [Payment Methods](#payment-methods)
-- [Technology Stack](#technology-stack)
-- [Smart Contracts](#smart-contracts)
-- [Installation & Setup](#installation--setup)
-- [API Documentation](#api-documentation)
-- [Usage Guide](#usage-guide)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [License](#license)
+-   [Overview](#overview)
+-   [System Architecture](#system-architecture)
+-   [User Roles & Features](#user-roles--features)
+-   [Payment Methods](#payment-methods)
+-   [Technology Stack](#technology-stack)
+-   [Smart Contracts](#smart-contracts)
+-   [Installation & Setup](#installation--setup)
+-   [API Documentation](#api-documentation)
+-   [Usage Guide](#usage-guide)
+-   [Deployment](#deployment)
+-   [Contributing](#contributing)
+-   [License](#license)
 
 ## 🎯 Overview
 
-NFC-SuiPay is a comprehensive **decentralized payment platform** built on the Sui blockchain, enabling secure and fast payments through:
+PandaPay is a comprehensive **decentralized payment platform** built on the Sui blockchain, enabling secure and fast payments through:
 
-- **💳 NFC Card Payments** - Tap-to-pay with physical NFC cards
-- **📱 QR Code Payments** - Scan-to-pay with QR codes
-- **🔄 Token Swapping** - Real-time USD/VND token exchange
-- **👥 Multi-role System** - User, Merchant, and Admin interfaces
-- **🔐 Secure Authentication** - PIN, biometric, and signature verification
-- **📊 Real-time Analytics** - Comprehensive transaction monitoring
+-   **💳 NFC Card Payments** - Tap-to-pay with physical NFC cards
+-   **📱 QR Code Payments** - Scan-to-pay with QR codes
+-   **🔄 Token Swapping** - Real-time USD/VND token exchange
+-   **👥 Multi-role System** - User, Merchant, and Admin interfaces
+-   **🔐 Secure Authentication** - PIN, biometric, and signature verification
+-   **📊 Real-time Analytics** - Comprehensive transaction monitoring
 
 ## 🏗️ System Architecture
 
 ### **High-Level Architecture**
+
 ```mermaid
 graph TB
     subgraph "User Interfaces"
@@ -42,14 +43,14 @@ graph TB
         C[Admin Dashboard]
         D[Web Portal]
     end
-    
+
     subgraph "Payment Methods"
         E[NFC Card Reader]
         F[QR Code Scanner]
         G[Biometric Auth]
         H[PIN Verification]
     end
-    
+
     subgraph "Backend Services"
         I[Express.js API Server]
         J[Payment Processor]
@@ -57,48 +58,49 @@ graph TB
         L[Oracle Service]
         M[WebSocket Server]
     end
-    
+
     subgraph "Sui Blockchain"
         N[USD Token Contract]
         O[VND Token Contract]
         P[Oracle Contract]
         Q[Swap Pool Contract]
     end
-    
+
     subgraph "Data Layer"
         R[MongoDB Database]
         S[Redis Cache]
         T[File Storage]
     end
-    
+
     A --> E
     A --> F
     B --> E
     B --> F
     C --> I
     D --> I
-    
+
     E --> I
     F --> I
     G --> K
     H --> K
-    
+
     I --> J
     I --> K
     I --> L
     I --> M
-    
+
     J --> N
     J --> O
     L --> P
     J --> Q
-    
+
     I --> R
     I --> S
     I --> T
 ```
 
 ### **User Role Architecture**
+
 ```mermaid
 graph LR
     subgraph "User Roles"
@@ -106,38 +108,38 @@ graph LR
         B[🏪 Merchant]
         C[👑 Admin]
     end
-    
+
     subgraph "User Features"
         D[NFC Card Management]
         E[QR Payment Scanning]
         F[Wallet Management]
         G[Transaction History]
     end
-    
+
     subgraph "Merchant Features"
         H[POS Terminal]
         I[QR Code Generation]
         J[Payment Analytics]
         K[Transaction Reports]
     end
-    
+
     subgraph "Admin Features"
         L[User Management]
         M[System Monitoring]
         N[Transaction Oversight]
         O[System Configuration]
     end
-    
+
     A --> D
     A --> E
     A --> F
     A --> G
-    
+
     B --> H
     B --> I
     B --> J
     B --> K
-    
+
     C --> L
     C --> M
     C --> N
@@ -147,34 +149,38 @@ graph LR
 ## 👥 User Roles & Features
 
 ### 👤 **Regular User**
-- **NFC Card Management**: Register, activate, and manage physical NFC cards
-- **QR Payment Scanning**: Scan QR codes to make payments
-- **Wallet Integration**: Connect Sui wallet for token management
-- **Transaction History**: View all payment and transaction records
-- **PIN/Biometric Setup**: Configure secure authentication methods
-- **Token Swapping**: Exchange USD/VND tokens with real-time rates
+
+-   **NFC Card Management**: Register, activate, and manage physical NFC cards
+-   **QR Payment Scanning**: Scan QR codes to make payments
+-   **Wallet Integration**: Connect Sui wallet for token management
+-   **Transaction History**: View all payment and transaction records
+-   **PIN/Biometric Setup**: Configure secure authentication methods
+-   **Token Swapping**: Exchange USD/VND tokens with real-time rates
 
 ### 🏪 **Merchant**
-- **POS Terminal Interface**: Complete point-of-sale system
-- **QR Code Generation**: Create payment requests with QR codes
-- **NFC Payment Processing**: Accept tap-to-pay transactions
-- **Payment Analytics**: Revenue tracking and transaction analytics
-- **Transaction Reports**: Detailed financial reports and exports
-- **Customer Management**: Track customer payment patterns
-- **Real-time Notifications**: Instant payment confirmations
+
+-   **POS Terminal Interface**: Complete point-of-sale system
+-   **QR Code Generation**: Create payment requests with QR codes
+-   **NFC Payment Processing**: Accept tap-to-pay transactions
+-   **Payment Analytics**: Revenue tracking and transaction analytics
+-   **Transaction Reports**: Detailed financial reports and exports
+-   **Customer Management**: Track customer payment patterns
+-   **Real-time Notifications**: Instant payment confirmations
 
 ### 👑 **Admin**
-- **User Management**: Create, modify, and manage user accounts
-- **Merchant Onboarding**: Approve and manage merchant registrations
-- **System Monitoring**: Real-time system health and performance monitoring
-- **Transaction Oversight**: Monitor all platform transactions
-- **Security Management**: Configure security policies and limits
-- **Analytics Dashboard**: Platform-wide analytics and insights
-- **System Configuration**: Manage system settings and parameters
+
+-   **User Management**: Create, modify, and manage user accounts
+-   **Merchant Onboarding**: Approve and manage merchant registrations
+-   **System Monitoring**: Real-time system health and performance monitoring
+-   **Transaction Oversight**: Monitor all platform transactions
+-   **Security Management**: Configure security policies and limits
+-   **Analytics Dashboard**: Platform-wide analytics and insights
+-   **System Configuration**: Manage system settings and parameters
 
 ## 💳 Payment Methods
 
 ### **NFC Card Payments**
+
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -182,7 +188,7 @@ sequenceDiagram
     participant M as Merchant POS
     participant A as API Server
     participant B as Sui Blockchain
-    
+
     U->>M: Tap NFC Card
     M->>C: Read Card UUID
     C-->>M: Return Card Data
@@ -198,6 +204,7 @@ sequenceDiagram
 ```
 
 ### **QR Code Payments**
+
 ```mermaid
 sequenceDiagram
     participant M as Merchant
@@ -205,7 +212,7 @@ sequenceDiagram
     participant U as User App
     participant A as API Server
     participant B as Sui Blockchain
-    
+
     M->>A: Create Payment Request
     A-->>M: Generate QR Code
     M->>Q: Display QR Code
@@ -219,14 +226,16 @@ sequenceDiagram
 ```
 
 ### **Authentication Methods**
-- **PIN Verification**: 4-6 digit PIN for quick authentication
-- **Biometric Authentication**: Fingerprint and face recognition
-- **Digital Signature**: Cryptographic signature verification
-- **Multi-factor Authentication**: Combined security methods
+
+-   **PIN Verification**: 4-6 digit PIN for quick authentication
+-   **Biometric Authentication**: Fingerprint and face recognition
+-   **Digital Signature**: Cryptographic signature verification
+-   **Multi-factor Authentication**: Combined security methods
 
 ## 🔄 Payment Flow Diagrams
 
 ### **Complete Payment Ecosystem**
+
 ```mermaid
 graph TB
     subgraph "Payment Initiation"
@@ -234,28 +243,28 @@ graph TB
         B -->|NFC| C[Tap Card]
         B -->|QR| D[Scan Code]
     end
-    
+
     subgraph "Authentication Layer"
         C --> E[Card Validation]
         D --> F[QR Validation]
         E --> G[PIN/Biometric]
         F --> H[Wallet Auth]
     end
-    
+
     subgraph "Processing Layer"
         G --> I[Payment Processor]
         H --> I
         I --> J[Balance Check]
         I --> K[Rate Validation]
     end
-    
+
     subgraph "Blockchain Layer"
         J --> L[Sui Transaction]
         K --> L
         L --> M[Token Transfer]
         L --> N[Oracle Update]
     end
-    
+
     subgraph "Confirmation Layer"
         M --> O[Transaction Confirmed]
         N --> O
@@ -265,6 +274,7 @@ graph TB
 ```
 
 ### **User Registration & Onboarding Flow**
+
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -272,7 +282,7 @@ sequenceDiagram
     participant A as API Server
     participant D as Database
     participant B as Sui Blockchain
-    
+
     U->>F: Register Account
     F->>A: POST /api/auth/register
     A->>D: Create User Record
@@ -281,13 +291,13 @@ sequenceDiagram
     B-->>A: Wallet Address
     A->>D: Update User with Wallet
     A-->>F: Registration Success
-    
+
     U->>F: Login
     F->>A: POST /api/auth/login
     A->>D: Validate Credentials
     D-->>A: User Data
     A-->>F: JWT Token + User Info
-    
+
     U->>F: Register NFC Card
     F->>A: POST /api/cards/register
     A->>D: Create Card Record
@@ -298,42 +308,47 @@ sequenceDiagram
 ## 🛠️ Technology Stack
 
 ### **Frontend**
-- **Framework**: Next.js 15.5.0 with React 19.1.0
-- **Language**: TypeScript 5.x
-- **UI Library**: Shadcn UI with Radix UI primitives
-- **Styling**: Tailwind CSS 4.x
-- **Blockchain**: Sui DApp Kit 0.18.0, Sui SDK 1.37.4
-- **State Management**: React Hooks, TanStack Query
-- **NFC Support**: Web NFC API for card reading
+
+-   **Framework**: Next.js 15.5.0 with React 19.1.0
+-   **Language**: TypeScript 5.x
+-   **UI Library**: Shadcn UI with Radix UI primitives
+-   **Styling**: Tailwind CSS 4.x
+-   **Blockchain**: Sui DApp Kit 0.18.0, Sui SDK 1.37.4
+-   **State Management**: React Hooks, TanStack Query
+-   **NFC Support**: Web NFC API for card reading
 
 ### **Backend**
-- **Runtime**: Node.js with Express.js
-- **Language**: TypeScript 5.x
-- **Database**: MongoDB with Mongoose
-- **Cache**: Redis with IORedis
-- **Queue**: Bull Queue for background jobs
-- **Blockchain**: Sui SDK for smart contract interaction
-- **Authentication**: JWT with refresh tokens
-- **Real-time**: WebSocket for live updates
+
+-   **Runtime**: Node.js with Express.js
+-   **Language**: TypeScript 5.x
+-   **Database**: MongoDB with Mongoose
+-   **Cache**: Redis with IORedis
+-   **Queue**: Bull Queue for background jobs
+-   **Blockchain**: Sui SDK for smart contract interaction
+-   **Authentication**: JWT with refresh tokens
+-   **Real-time**: WebSocket for live updates
 
 ### **Smart Contracts**
-- **Language**: Move
-- **Platform**: Sui Testnet
-- **Features**: Token minting, oracle system, swap pools
-- **Decimals**: 9 decimal places for precision
-- **Security**: Input validation and access control
+
+-   **Language**: Move
+-   **Platform**: Sui Testnet
+-   **Features**: Token minting, oracle system, swap pools
+-   **Decimals**: 9 decimal places for precision
+-   **Security**: Input validation and access control
 
 ### **External Services**
-- **Oracle APIs**: CoinGecko, ExchangeRate-API, Fixer.io, Alpha Vantage
-- **Infrastructure**: Docker, PM2 for process management
-- **Monitoring**: Winston logging, Morgan request logging
-- **Security**: Helmet.js, rate limiting, CORS
+
+-   **Oracle APIs**: CoinGecko, ExchangeRate-API, Fixer.io, Alpha Vantage
+-   **Infrastructure**: Docker, PM2 for process management
+-   **Monitoring**: Winston logging, Morgan request logging
+-   **Security**: Helmet.js, rate limiting, CORS
 
 ## ⛓️ Smart Contracts
 
 ### **Token Contracts**
 
 #### USD Token (`sUSD.move`)
+
 ```move
 module swap::USD {
     // 9 decimal places for precision
@@ -343,6 +358,7 @@ module swap::USD {
 ```
 
 #### VND Token (`vietnamdong.move`)
+
 ```move
 module swap::VND {
     // Vietnamese Dong token
@@ -352,6 +368,7 @@ module swap::VND {
 ```
 
 ### **Oracle System (`price_oracle.move`)**
+
 ```move
 module swap::custom_oracle {
     public struct Price {
@@ -359,7 +376,7 @@ module swap::custom_oracle {
         value: u64,    // USD/VND rate
         timestamp: u64
     }
-    
+
     // Real-time price updates from backend
     // Immutable price history
     // Gas-efficient price queries
@@ -367,6 +384,7 @@ module swap::custom_oracle {
 ```
 
 ### **Swap Pool (`swap.move`)**
+
 ```move
 module swap::swap {
     public struct Pool {
@@ -374,7 +392,7 @@ module swap::swap {
         test_VND: Balance<VND>,
         test_USD: Balance<USD>
     }
-    
+
     // Automated Market Maker (AMM) logic
     // Oracle-based pricing
     // Liquidity management
@@ -384,19 +402,22 @@ module swap::swap {
 ## 🚀 Installation & Setup
 
 ### **Prerequisites**
-- Node.js 18+ and npm/pnpm
-- Sui CLI installed
-- MongoDB instance
-- Redis instance
-- Git
+
+-   Node.js 18+ and npm/pnpm
+-   Sui CLI installed
+-   MongoDB instance
+-   Redis instance
+-   Git
 
 ### **1. Clone Repository**
+
 ```bash
 git clone https://github.com/nhatlapross/NFC-suipay.git
 cd NFC-suipay
 ```
 
 ### **2. Smart Contract Setup**
+
 ```bash
 cd swap
 sui client new-address ed25519
@@ -407,6 +428,7 @@ sui client publish --gas-budget 100000000
 ```
 
 ### **3. Backend Setup**
+
 ```bash
 cd backend
 cp .env.example .env
@@ -417,6 +439,7 @@ npm run dev
 ```
 
 ### **4. Frontend Setup**
+
 ```bash
 cd frontend
 cp .env.local.example .env.local
@@ -428,6 +451,7 @@ npm run dev
 ### **5. Environment Configuration**
 
 #### Backend (`.env`)
+
 ```env
 # Database
 MONGODB_URI=mongodb://localhost:27017/nfc-suipay
@@ -452,6 +476,7 @@ NODE_ENV=development
 ```
 
 #### Frontend (`.env.local`)
+
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 NEXT_PUBLIC_SUI_RPC_URL=https://fullnode.testnet.sui.io:443
@@ -465,186 +490,206 @@ NEXT_PUBLIC_POOL_OBJECT_ID=0xfb9b73c95fcc948cbb4860cbe1816c726ae79e797cf9c718656
 ### **Authentication Endpoints**
 
 #### `POST /api/auth/register`
+
 Register new user account.
 
 **Request:**
+
 ```json
 {
-  "email": "user@example.com",
-  "password": "SecurePass123!",
-  "fullName": "John Doe",
-  "phoneNumber": "0123456789",
-  "role": "user"
+    "email": "user@example.com",
+    "password": "SecurePass123!",
+    "fullName": "John Doe",
+    "phoneNumber": "0123456789",
+    "role": "user"
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "message": "User registered successfully",
-  "user": {
-    "id": "68bf13c1746dd185de2ee844",
-    "email": "user@example.com",
-    "fullName": "John Doe",
-    "role": "user",
-    "walletAddress": "0x..."
-  }
+    "success": true,
+    "message": "User registered successfully",
+    "user": {
+        "id": "68bf13c1746dd185de2ee844",
+        "email": "user@example.com",
+        "fullName": "John Doe",
+        "role": "user",
+        "walletAddress": "0x..."
+    }
 }
 ```
 
 #### `POST /api/auth/login`
+
 User login with credentials.
 
 **Request:**
+
 ```json
 {
-  "email": "user@example.com",
-  "password": "SecurePass123!"
+    "email": "user@example.com",
+    "password": "SecurePass123!"
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "tokens": {
-    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-  },
-  "user": {
-    "id": "68bf13c1746dd185de2ee844",
-    "email": "user@example.com",
-    "role": "user"
-  }
+    "success": true,
+    "tokens": {
+        "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+        "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
+    },
+    "user": {
+        "id": "68bf13c1746dd185de2ee844",
+        "email": "user@example.com",
+        "role": "user"
+    }
 }
 ```
 
 ### **NFC Payment Endpoints**
 
 #### `POST /api/payment/nfc-validate`
+
 Validate NFC card for payment (no auth required).
 
 **Request:**
+
 ```json
 {
-  "cardUuid": "550e8400-e29b-41d4-a716-446655440000",
-  "amount": 1.5,
-  "merchantId": "MERCHANT_001",
-  "terminalId": "TERMINAL_001"
+    "cardUuid": "550e8400-e29b-41d4-a716-446655440000",
+    "amount": 1.5,
+    "merchantId": "MERCHANT_001",
+    "terminalId": "TERMINAL_001"
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "authorized": true,
-  "authCode": "NFC_MFBEYWP8_VNNNIC",
-  "processingTime": 253,
-  "requestId": "nfc_1757353616177_17owz",
-  "validUntil": "2025-09-08T17:47:26.396Z",
-  "details": {
-    "cardType": "physical",
-    "remainingDaily": 998.5
-  }
+    "success": true,
+    "authorized": true,
+    "authCode": "NFC_MFBEYWP8_VNNNIC",
+    "processingTime": 253,
+    "requestId": "nfc_1757353616177_17owz",
+    "validUntil": "2025-09-08T17:47:26.396Z",
+    "details": {
+        "cardType": "physical",
+        "remainingDaily": 998.5
+    }
 }
 ```
 
 #### `POST /api/payment/nfc-process`
+
 Process NFC payment with authentication.
 
 **Request:**
+
 ```json
 {
-  "cardUuid": "550e8400-e29b-41d4-a716-446655440000",
-  "amount": 1.5,
-  "merchantId": "MERCHANT_001",
-  "terminalId": "TERMINAL_001",
-  "pin": "1234"
+    "cardUuid": "550e8400-e29b-41d4-a716-446655440000",
+    "amount": 1.5,
+    "merchantId": "MERCHANT_001",
+    "terminalId": "TERMINAL_001",
+    "pin": "1234"
 }
 ```
 
 ### **QR Payment Endpoints**
 
 #### `POST /api/payment/merchant/create-request`
+
 Create QR payment request (Merchant only).
 
 **Request:**
+
 ```json
 {
-  "amount": 25.50,
-  "description": "Coffee and pastry"
+    "amount": 25.5,
+    "description": "Coffee and pastry"
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "message": "Merchant payment request created",
-  "request": {
-    "id": "req_123456789",
-    "amount": 25.50,
-    "status": "requested",
-    "qrPayload": {
-      "requestId": "req_123456789",
-      "amount": 25.50,
-      "merchantId": "MERCHANT_001"
+    "success": true,
+    "message": "Merchant payment request created",
+    "request": {
+        "id": "req_123456789",
+        "amount": 25.5,
+        "status": "requested",
+        "qrPayload": {
+            "requestId": "req_123456789",
+            "amount": 25.5,
+            "merchantId": "MERCHANT_001"
+        }
     }
-  }
 }
 ```
 
 #### `POST /api/payment/qr-process`
+
 Process QR code payment.
 
 **Request:**
+
 ```json
 {
-  "requestId": "req_123456789",
-  "walletAddress": "0x...",
-  "pin": "1234"
+    "requestId": "req_123456789",
+    "walletAddress": "0x...",
+    "pin": "1234"
 }
 ```
 
 ### **Oracle Endpoints**
 
 #### `GET /api/oracle/rate`
+
 Get current exchange rate from smart contract.
 
 **Response:**
+
 ```json
 {
-  "usdToVnd": 24300,
-  "vndToUsd": 0.000041,
-  "timestamp": 1703123456789,
-  "source": "smart-contract"
+    "usdToVnd": 24300,
+    "vndToUsd": 0.000041,
+    "timestamp": 1703123456789,
+    "source": "smart-contract"
 }
 ```
 
 ### **Admin Endpoints**
 
 #### `GET /api/admin/users`
+
 Get all users (Admin only).
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "users": [
-    {
-      "id": "68bf13c1746dd185de2ee844",
-      "email": "user@example.com",
-      "fullName": "John Doe",
-      "role": "user",
-      "status": "active",
-      "createdAt": "2024-01-01T00:00:00.000Z"
-    }
-  ],
-  "total": 1,
-  "page": 1,
-  "limit": 10
+    "success": true,
+    "users": [
+        {
+            "id": "68bf13c1746dd185de2ee844",
+            "email": "user@example.com",
+            "fullName": "John Doe",
+            "role": "user",
+            "status": "active",
+            "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 10
 }
 ```
 
@@ -653,6 +698,7 @@ Get all users (Admin only).
 ### **👤 For Regular Users**
 
 #### **1. Account Registration & Setup**
+
 1. Visit the application
 2. Click "Register" and fill in your details
 3. Verify your email address
@@ -660,6 +706,7 @@ Get all users (Admin only).
 5. Connect your Sui wallet
 
 #### **2. NFC Card Registration**
+
 1. Go to "My Cards" section
 2. Click "Register New Card"
 3. Tap your NFC card when prompted
@@ -667,6 +714,7 @@ Get all users (Admin only).
 5. Card is now ready for payments
 
 #### **3. Making NFC Payments**
+
 1. At merchant POS, enter amount
 2. Tap your NFC card on the reader
 3. Enter your PIN when prompted
@@ -674,6 +722,7 @@ Get all users (Admin only).
 5. Receive digital receipt
 
 #### **4. QR Code Payments**
+
 1. Open the app and go to "Payments"
 2. Tap "Scan QR Code"
 3. Scan the merchant's QR code
@@ -683,24 +732,28 @@ Get all users (Admin only).
 ### **🏪 For Merchants**
 
 #### **1. Merchant Registration**
+
 1. Register as a merchant account
 2. Complete KYC verification
 3. Set up merchant credentials
 4. Configure payment terminals
 
 #### **2. POS Terminal Setup**
+
 1. Access merchant dashboard
 2. Set up payment terminals
 3. Configure NFC readers
 4. Test payment processing
 
 #### **3. Processing NFC Payments**
+
 1. Enter transaction amount
 2. Customer taps NFC card
 3. Verify payment on screen
 4. Print or send receipt
 
 #### **4. QR Code Generation**
+
 1. Go to "QR Payments" section
 2. Enter amount and description
 3. Generate QR code
@@ -709,24 +762,28 @@ Get all users (Admin only).
 ### **👑 For Administrators**
 
 #### **1. User Management**
+
 1. Access admin dashboard
 2. View all registered users
 3. Manage user roles and permissions
 4. Monitor user activity
 
 #### **2. Merchant Onboarding**
+
 1. Review merchant applications
 2. Approve or reject merchants
 3. Configure merchant limits
 4. Monitor merchant transactions
 
 #### **3. System Monitoring**
+
 1. View real-time system metrics
 2. Monitor transaction volumes
 3. Check system health status
 4. Review security logs
 
 ### **🔄 Token Swapping (Optional Feature)**
+
 1. Navigate to "Swap" page
 2. Select currencies (USD/VND)
 3. Enter amount to swap
@@ -738,12 +795,14 @@ Get all users (Admin only).
 ### **Production Deployment**
 
 #### **1. Smart Contract Deployment**
+
 ```bash
 cd swap
 sui client publish --gas-budget 100000000 --json > deployment.json
 ```
 
 #### **2. Backend Deployment**
+
 ```bash
 cd backend
 npm run build
@@ -751,6 +810,7 @@ pm2 start dist/index.js --name nfc-suipay-backend
 ```
 
 #### **3. Frontend Deployment**
+
 ```bash
 cd frontend
 npm run build
@@ -759,19 +819,22 @@ npm start
 ```
 
 ### **Docker Deployment**
+
 ```bash
 docker-compose up -d
 ```
 
 ### **Environment Variables for Production**
-- Set `NODE_ENV=production`
-- Configure production database URLs
-- Set up proper API keys
-- Configure HTTPS for security
+
+-   Set `NODE_ENV=production`
+-   Configure production database URLs
+-   Set up proper API keys
+-   Configure HTTPS for security
 
 ## 🔧 Development
 
 ### **Project Structure**
+
 ```
 NFC-suipay/
 ├── backend/                 # Express.js API server
@@ -797,6 +860,7 @@ NFC-suipay/
 ### **Available Scripts**
 
 #### **Backend**
+
 ```bash
 npm run dev          # Development server
 npm run build        # Build for production
@@ -806,6 +870,7 @@ npm run lint         # Lint code
 ```
 
 #### **Frontend**
+
 ```bash
 npm run dev          # Development server
 npm run build        # Build for production
@@ -814,6 +879,7 @@ npm run lint         # Lint code
 ```
 
 #### **Smart Contracts**
+
 ```bash
 sui move build       # Build contracts
 sui move test        # Run tests
@@ -823,61 +889,70 @@ sui client publish   # Deploy contracts
 ## 🧪 Testing
 
 ### **Smart Contract Testing**
+
 ```bash
 cd swap
 sui move test
 ```
 
 ### **Backend Testing**
+
 ```bash
 cd backend
 npm test
 ```
 
 ### **Frontend Testing**
+
 ```bash
 cd frontend
 npm test
 ```
 
 ### **Integration Testing**
-- Test complete swap flow
-- Test oracle price updates
-- Test wallet integration
-- Test error handling
+
+-   Test complete swap flow
+-   Test oracle price updates
+-   Test wallet integration
+-   Test error handling
 
 ## 📊 Monitoring & Analytics
 
 ### **Logging**
-- **Backend**: Winston logger with multiple transports
-- **Frontend**: Console logging with error tracking
-- **Smart Contracts**: Event emission for tracking
+
+-   **Backend**: Winston logger with multiple transports
+-   **Frontend**: Console logging with error tracking
+-   **Smart Contracts**: Event emission for tracking
 
 ### **Metrics**
-- Exchange rate accuracy
-- Transaction success rates
-- User engagement metrics
-- System performance metrics
+
+-   Exchange rate accuracy
+-   Transaction success rates
+-   User engagement metrics
+-   System performance metrics
 
 ## 🔒 Security Considerations
 
 ### **Smart Contract Security**
-- Input validation and sanitization
-- Access control and permissions
-- Overflow/underflow protection
-- Gas optimization
+
+-   Input validation and sanitization
+-   Access control and permissions
+-   Overflow/underflow protection
+-   Gas optimization
 
 ### **Backend Security**
-- API rate limiting
-- Input validation
-- CORS configuration
-- Helmet.js security headers
+
+-   API rate limiting
+-   Input validation
+-   CORS configuration
+-   Helmet.js security headers
 
 ### **Frontend Security**
-- No private key storage
-- Secure wallet integration
-- Input sanitization
-- HTTPS enforcement
+
+-   No private key storage
+-   Secure wallet integration
+-   Input sanitization
+-   HTTPS enforcement
 
 ## 🤝 Contributing
 
@@ -888,11 +963,12 @@ npm test
 5. Open a Pull Request
 
 ### **Development Guidelines**
-- Follow TypeScript best practices
-- Write comprehensive tests
-- Update documentation
-- Follow conventional commits
-- Ensure code quality with linting
+
+-   Follow TypeScript best practices
+-   Write comprehensive tests
+-   Update documentation
+-   Follow conventional commits
+-   Ensure code quality with linting
 
 ## 📄 License
 
@@ -900,21 +976,21 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **Sui Foundation** for the excellent blockchain platform
-- **CoinGecko** for reliable exchange rate data
-- **Sui DApp Kit** for seamless wallet integration
-- **Shadcn UI** for beautiful UI components
-- **Open source community** for various dependencies
+-   **Sui Foundation** for the excellent blockchain platform
+-   **CoinGecko** for reliable exchange rate data
+-   **Sui DApp Kit** for seamless wallet integration
+-   **Shadcn UI** for beautiful UI components
+-   **Open source community** for various dependencies
 
 ## 📞 Support
 
-- **Documentation**: [Project Wiki](https://github.com/nhatlapross/NFC-suipay/wiki)
-- **Issues**: [GitHub Issues](https://github.com/nhatlapross/NFC-suipay/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/nhatlapross/NFC-suipay/discussions)
-- **Email**: support@nfc-suipay.com
+-   **Documentation**: [Project Wiki](https://github.com/nhatlapross/NFC-suipay/wiki)
+-   **Issues**: [GitHub Issues](https://github.com/nhatlapross/NFC-suipay/issues)
+-   **Discussions**: [GitHub Discussions](https://github.com/nhatlapross/NFC-suipay/discussions)
+-   **Email**: support@pandapay.com
 
 ---
 
 **Built with ❤️ using Sui Blockchain**
 
-*Last updated: December 2024*
+_Last updated: September 2025_
