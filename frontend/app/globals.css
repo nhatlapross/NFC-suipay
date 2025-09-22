@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  --neo-pink: #FF005C;
+  --neo-cyan: #00F0FF;
+  --neo-black: #000000;
+  --neo-white: #FFFFFF;
+
+  --shadow-brutal: 6px 6px 0 #000000;
+  --shadow-brutal-sm: 3px 3px 0 #000000;
+  --shadow-brutal-lg: 8px 8px 0 #000000;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-ibm-plex-mono: var(--font-ibm-plex-mono);
+  --font-mono: var(--font-geist-mono);
+
+  --color-neo-pink: var(--neo-pink);
+  --color-neo-cyan: var(--neo-cyan);
+  --color-neo-black: var(--neo-black);
+  --color-neo-white: var(--neo-white);
+
+  --shadow-brutal: var(--shadow-brutal);
+  --shadow-brutal-sm: var(--shadow-brutal-sm);
+  --shadow-brutal-lg: var(--shadow-brutal-lg);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
